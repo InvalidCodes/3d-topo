@@ -1,0 +1,1222 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Knot Invariance Dataset Generator</title>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+        }
+      }
+    </script>
+    <!-- JSZip for ZIP export -->
+    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+    <style>
+      :root {
+        --bg: #0a0d14;
+        --panel: #111827;
+        --panel-border: #1f2937;
+        --accent: #3b82f6;
+        --accent-hover: #2563eb;
+        --cyan: #06b6d4;
+        --gold: #f59e0b;
+        --green: #10b981;
+        --red: #ef4444;
+        --text: #f3f4f6;
+        --muted: #9ca3af;
+        --success-bg: rgba(16, 185, 129, 0.1);
+        --error-bg: rgba(239, 68, 68, 0.1);
+      }
+      
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      
+      body { 
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        background: var(--bg); 
+        color: var(--text); 
+        min-height: 100vh;
+        overflow-x: hidden;
+      }
+      
+      .app {
+        display: grid;
+        grid-template-columns: 380px 1fr;
+        min-height: 100vh;
+      }
+      
+      /* Panel */
+      .panel {
+        background: var(--panel);
+        border-right: 1px solid var(--panel-border);
+        padding: 24px;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+      }
+      
+      .panel::-webkit-scrollbar { width: 6px; }
+      .panel::-webkit-scrollbar-track { background: var(--bg); }
+      .panel::-webkit-scrollbar-thumb { background: var(--panel-border); border-radius: 3px; }
+      
+      /* Header */
+      .header h1 {
+        font-size: 22px;
+        font-weight: 700;
+        background: linear-gradient(135deg, var(--cyan), var(--accent));
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        margin-bottom: 6px;
+      }
+      
+      .header .subtitle {
+        font-size: 13px;
+        color: var(--muted);
+        line-height: 1.5;
+      }
+      
+      /* Cards */
+      .card {
+        background: rgba(255, 255, 255, 0.02);
+        border: 1px solid var(--panel-border);
+        border-radius: 12px;
+        padding: 16px;
+      }
+      
+      .card-header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 14px;
+        padding-bottom: 10px;
+        border-bottom: 1px solid var(--panel-border);
+      }
+      
+      .card-header .icon {
+        width: 32px;
+        height: 32px;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 16px;
+      }
+      
+      .card-header .icon.blue { background: rgba(59, 130, 246, 0.2); }
+      .card-header .icon.green { background: rgba(16, 185, 129, 0.2); }
+      .card-header .icon.gold { background: rgba(245, 158, 11, 0.2); }
+      .card-header .icon.cyan { background: rgba(6, 182, 212, 0.2); }
+      
+      .card-header h3 {
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--text);
+      }
+      
+      /* Form Elements */
+      .form-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+        margin-bottom: 12px;
+      }
+      
+      .form-row.single {
+        grid-template-columns: 1fr;
+      }
+      
+      .form-group {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      
+      .form-group label {
+        font-size: 12px;
+        color: var(--muted);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      
+      .form-group label .hint {
+        font-size: 10px;
+        color: var(--cyan);
+      }
+      
+      input[type="text"],
+      input[type="number"],
+      select {
+        width: 100%;
+        padding: 10px 12px;
+        border: 1px solid var(--panel-border);
+        border-radius: 8px;
+        background: var(--bg);
+        color: var(--text);
+        font-size: 13px;
+        font-family: inherit;
+        transition: border-color 0.15s, box-shadow 0.15s;
+      }
+      
+      input:focus,
+      select:focus {
+        outline: none;
+        border-color: var(--accent);
+        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+      }
+      
+      /* Range Slider */
+      .slider-group {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      
+      .slider-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      
+      .slider-header label {
+        font-size: 12px;
+        color: var(--muted);
+      }
+      
+      .slider-header .value {
+        font-size: 12px;
+        color: var(--cyan);
+        font-weight: 600;
+      }
+      
+      input[type="range"] {
+        -webkit-appearance: none;
+        width: 100%;
+        height: 6px;
+        border-radius: 3px;
+        background: var(--panel-border);
+        outline: none;
+      }
+      
+      input[type="range"]::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        background: var(--accent);
+        cursor: pointer;
+        border: 2px solid var(--bg);
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+      }
+      
+      /* Checkbox */
+      .checkbox-group {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        cursor: pointer;
+      }
+      
+      .checkbox-group input[type="checkbox"] {
+        width: 18px;
+        height: 18px;
+        accent-color: var(--accent);
+      }
+      
+      .checkbox-group span {
+        font-size: 13px;
+        color: var(--text);
+      }
+      
+      /* Difficulty Distribution */
+      .difficulty-bars {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      
+      .difficulty-bar {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      
+      .difficulty-bar .label {
+        width: 70px;
+        font-size: 12px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      
+      .difficulty-bar .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+      }
+      
+      .difficulty-bar .dot.easy { background: var(--green); }
+      .difficulty-bar .dot.medium { background: var(--gold); }
+      .difficulty-bar .dot.hard { background: var(--red); }
+      
+      .difficulty-bar input[type="range"] {
+        flex: 1;
+      }
+      
+      .difficulty-bar .pct {
+        width: 40px;
+        font-size: 12px;
+        color: var(--cyan);
+        text-align: right;
+      }
+      
+      /* Buttons */
+      .btn {
+        padding: 12px 20px;
+        border: none;
+        border-radius: 8px;
+        font-size: 14px;
+        font-weight: 600;
+        font-family: inherit;
+        cursor: pointer;
+        transition: all 0.15s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+      }
+      
+      .btn-primary {
+        background: linear-gradient(135deg, var(--accent), var(--cyan));
+        color: white;
+      }
+      
+      .btn-primary:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+      }
+      
+      .btn-primary:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+        transform: none;
+      }
+      
+      .btn-secondary {
+        background: var(--panel-border);
+        color: var(--text);
+      }
+      
+      .btn-secondary:hover {
+        background: #374151;
+      }
+      
+      .btn-success {
+        background: var(--green);
+        color: white;
+      }
+      
+      .btn-row {
+        display: flex;
+        gap: 10px;
+      }
+      
+      .btn-row .btn {
+        flex: 1;
+      }
+      
+      /* Progress */
+      .progress-section, #exportProgressSection {
+        display: none;
+        margin-top: 12px;
+      }
+      
+      .progress-section.active, #exportProgressSection.active {
+        display: block;
+      }
+      
+      .progress-bar-container {
+        background: var(--bg);
+        border-radius: 6px;
+        height: 8px;
+        overflow: hidden;
+        margin-bottom: 10px;
+      }
+      
+      .progress-bar {
+        height: 100%;
+        background: linear-gradient(90deg, var(--accent), var(--cyan));
+        width: 0%;
+        transition: width 0.3s ease;
+      }
+      
+      .progress-text {
+        display: flex;
+        justify-content: space-between;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      
+      /* Stats */
+      .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
+      }
+      
+      .stat-item {
+        background: var(--bg);
+        border-radius: 8px;
+        padding: 12px;
+        text-align: center;
+      }
+      
+      .stat-item .value {
+        font-size: 20px;
+        font-weight: 700;
+        color: var(--cyan);
+      }
+      
+      .stat-item .label {
+        font-size: 11px;
+        color: var(--muted);
+        margin-top: 4px;
+      }
+      
+      /* Preview Area */
+      .preview-area {
+        background: var(--bg);
+        display: flex;
+        flex-direction: column;
+        padding: 24px;
+        gap: 20px;
+        overflow-y: auto;
+      }
+      
+      .preview-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      
+      .preview-header h2 {
+        font-size: 18px;
+        font-weight: 600;
+      }
+      
+      .preview-nav {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      
+      .preview-nav button {
+        width: 36px;
+        height: 36px;
+        border: 1px solid var(--panel-border);
+        border-radius: 8px;
+        background: var(--panel);
+        color: var(--text);
+        font-size: 16px;
+        cursor: pointer;
+        transition: all 0.15s;
+      }
+      
+      .preview-nav button:hover {
+        background: var(--panel-border);
+      }
+      
+      .preview-nav button:disabled {
+        opacity: 0.3;
+        cursor: not-allowed;
+      }
+      
+      .preview-nav span {
+        font-size: 13px;
+        color: var(--muted);
+        min-width: 80px;
+        text-align: center;
+      }
+      
+      /* Pair Preview */
+      .pair-preview {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+      }
+      
+      .pair-images {
+        display: grid;
+        grid-template-columns: 1fr 80px 1fr;
+        gap: 20px;
+        align-items: center;
+      }
+      
+      .image-container {
+        aspect-ratio: 1;
+        background: var(--panel);
+        border-radius: 12px;
+        border: 2px solid var(--panel-border);
+        overflow: hidden;
+        position: relative;
+      }
+      
+      .image-container canvas,
+      .image-container img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+      }
+      
+      .image-container .label {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        background: rgba(0, 0, 0, 0.7);
+        padding: 4px 10px;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: 600;
+      }
+      
+      .vs-divider {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 10px;
+      }
+      
+      .vs-divider .vs {
+        font-size: 24px;
+        font-weight: 700;
+        color: var(--panel-border);
+      }
+      
+      .vs-divider .answer {
+        padding: 6px 14px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 600;
+      }
+      
+      .vs-divider .answer.equivalent {
+        background: var(--success-bg);
+        color: var(--green);
+        border: 1px solid var(--green);
+      }
+      
+      .vs-divider .answer.not-equivalent {
+        background: var(--error-bg);
+        color: var(--red);
+        border: 1px solid var(--red);
+      }
+      
+      /* Pair Info */
+      .pair-info {
+        background: var(--panel);
+        border-radius: 12px;
+        padding: 16px;
+      }
+      
+      .pair-info-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 16px;
+      }
+      
+      .info-item {
+        text-align: center;
+      }
+      
+      .info-item .label {
+        font-size: 11px;
+        color: var(--muted);
+        margin-bottom: 4px;
+      }
+      
+      .info-item .value {
+        font-size: 14px;
+        font-weight: 600;
+      }
+      
+      .info-item .value.green { color: var(--green); }
+      .info-item .value.gold { color: var(--gold); }
+      .info-item .value.red { color: var(--red); }
+      .info-item .value.cyan { color: var(--cyan); }
+      
+      /* Empty State */
+      .empty-state {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        color: var(--muted);
+        text-align: center;
+        gap: 12px;
+      }
+      
+      .empty-state .icon {
+        font-size: 48px;
+        opacity: 0.5;
+      }
+      
+      .empty-state p {
+        font-size: 14px;
+      }
+      
+      /* Toast */
+      .toast {
+        position: fixed;
+        bottom: 24px;
+        right: 24px;
+        padding: 14px 20px;
+        border-radius: 10px;
+        background: var(--panel);
+        border: 1px solid var(--panel-border);
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+        font-size: 13px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        transform: translateY(100px);
+        opacity: 0;
+        transition: all 0.3s ease;
+        z-index: 1000;
+      }
+      
+      .toast.show {
+        transform: translateY(0);
+        opacity: 1;
+      }
+      
+      .toast.success { border-color: var(--green); }
+      .toast.error { border-color: var(--red); }
+      
+      /* Responsive */
+      @media (max-width: 1024px) {
+        .app {
+          grid-template-columns: 1fr;
+        }
+        
+        .panel {
+          max-height: 50vh;
+        }
+        
+        .pair-images {
+          grid-template-columns: 1fr;
+          gap: 10px;
+        }
+        
+        .vs-divider {
+          flex-direction: row;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <!-- Left Panel -->
+      <div class="panel">
+        <!-- Header -->
+        <div class="header">
+          <h1>🔗 Knot Invariance</h1>
+          <p class="subtitle">
+            生成用于测试模型拓扑不变性理解能力的图像对数据集。
+            判断两张图中的绳结是否属于同一拓扑类型。
+          </p>
+        </div>
+
+        <!-- Basic Settings -->
+        <div class="card">
+          <div class="card-header">
+            <div class="icon blue">⚙️</div>
+            <h3>基础设置</h3>
+            </div>
+          
+          <div class="form-row">
+            <div class="form-group">
+              <label>随机种子 <span class="hint">可复现</span></label>
+              <input type="text" id="seed" value="invariance-v1" />
+          </div>
+            <div class="form-group">
+              <label>Pair 数量 <span class="hint">1-500</span></label>
+              <input type="number" id="numPairs" value="20" min="1" max="500" />
+            </div>
+            </div>
+          
+          <div class="form-row">
+            <div class="form-group">
+              <label>图片尺寸</label>
+              <select id="imageSize">
+                <option value="512">512 × 512</option>
+                <option value="1024">1024 × 1024</option>
+                <option value="1536">1536 × 1536</option>
+                <option value="2048" selected>2048 × 2048</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Positive 比例</label>
+              <select id="positiveRatio">
+                <option value="0.3">30%</option>
+                <option value="0.5" selected>50%</option>
+                <option value="0.7">70%</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Difficulty Distribution -->
+        <div class="card">
+          <div class="card-header">
+            <div class="icon gold">📊</div>
+            <h3>难度分布</h3>
+          </div>
+          
+          <div class="difficulty-bars">
+            <div class="difficulty-bar">
+              <div class="label"><span class="dot easy"></span> Easy</div>
+              <input type="range" id="easyPct" min="0" max="100" value="33" />
+              <span class="pct" id="easyPctVal">33%</span>
+            </div>
+            <div class="difficulty-bar">
+              <div class="label"><span class="dot medium"></span> Medium</div>
+              <input type="range" id="mediumPct" min="0" max="100" value="34" />
+              <span class="pct" id="mediumPctVal">34%</span>
+            </div>
+            <div class="difficulty-bar">
+              <div class="label"><span class="dot hard"></span> Hard</div>
+              <input type="range" id="hardPct" min="0" max="100" value="33" />
+              <span class="pct" id="hardPctVal">33%</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Advanced Options -->
+        <div class="card">
+          <div class="card-header">
+            <div class="icon cyan">🎛️</div>
+            <h3>高级选项</h3>
+          </div>
+          
+          <div class="slider-group" style="margin-bottom: 12px;">
+            <div class="slider-header">
+              <label>变形强度范围</label>
+              <span class="value" id="deformRangeVal">0.1 - 0.6</span>
+            </div>
+            <div style="display: flex; gap: 10px;">
+              <input type="range" id="deformMin" min="0" max="0.5" step="0.05" value="0.1" style="flex: 1;" />
+              <input type="range" id="deformMax" min="0.3" max="1" step="0.05" value="0.6" style="flex: 1;" />
+          </div>
+        </div>
+
+          <div class="slider-group" style="margin-bottom: 12px;">
+            <div class="slider-header">
+              <label>绳子粗细范围</label>
+              <span class="value" id="radiusRangeVal">0.08 - 0.20</span>
+            </div>
+            <div style="display: flex; gap: 10px;">
+              <input type="range" id="radiusMin" min="0.05" max="0.15" step="0.01" value="0.08" style="flex: 1;" />
+              <input type="range" id="radiusMax" min="0.12" max="0.30" step="0.01" value="0.20" style="flex: 1;" />
+            </div>
+          </div>
+          
+          <label class="checkbox-group">
+            <input type="checkbox" id="includeDeceptive" checked />
+            <span>包含欺骗性类型 (Kinky Unknot 等)</span>
+          </label>
+        </div>
+
+        <!-- Actions -->
+        <div class="btn-row">
+          <button class="btn btn-primary" id="btnGenerate">
+            <span>🚀</span> 生成数据集
+          </button>
+        </div>
+
+        <!-- Progress -->
+        <div class="progress-section" id="progressSection">
+          <div class="progress-bar-container">
+            <div class="progress-bar" id="progressBar"></div>
+          </div>
+          <div class="progress-text">
+            <span id="progressText">准备中...</span>
+            <span id="progressPct">0%</span>
+          </div>
+        </div>
+
+        <!-- Stats -->
+        <div class="card" id="statsCard" style="display: none;">
+          <div class="card-header">
+            <div class="icon green">📈</div>
+            <h3>生成统计</h3>
+          </div>
+          
+          <div class="stats-grid">
+            <div class="stat-item">
+              <div class="value" id="statTotal">0</div>
+              <div class="label">总 Pairs</div>
+            </div>
+            <div class="stat-item">
+              <div class="value" id="statPositive">0</div>
+              <div class="label">Positive</div>
+            </div>
+            <div class="stat-item">
+              <div class="value" id="statNegative">0</div>
+              <div class="label">Negative</div>
+            </div>
+            <div class="stat-item">
+              <div class="value" id="statTime">0s</div>
+              <div class="label">耗时</div>
+            </div>
+          </div>
+          
+          <div class="btn-row" style="margin-top: 16px;">
+            <button class="btn btn-success" id="btnExport" disabled>
+              <span>📥</span> 下载数据集 ZIP
+            </button>
+        </div>
+
+          <!-- Export Progress -->
+          <div class="progress-section" id="exportProgressSection">
+            <div class="progress-bar-container">
+              <div class="progress-bar" id="exportProgressBar"></div>
+            </div>
+            <div class="progress-text">
+              <span id="exportProgressText">准备中...</span>
+              <span id="exportProgressPct">0%</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Preview Area -->
+      <div class="preview-area">
+        <div class="preview-header">
+          <h2>预览</h2>
+          <div class="preview-nav">
+            <button id="btnPrev" disabled>◀</button>
+            <span id="pairIndex">- / -</span>
+            <button id="btnNext" disabled>▶</button>
+        </div>
+      </div>
+      
+        <!-- Empty State -->
+        <div class="empty-state" id="emptyState">
+          <div class="icon">🔗</div>
+          <p>点击"生成数据集"开始<br/>生成拓扑不变性测试图像对</p>
+      </div>
+        
+        <!-- Pair Preview -->
+        <div class="pair-preview" id="pairPreview" style="display: none;">
+          <div class="pair-images">
+            <div class="image-container">
+              <div class="label" id="labelA">Image A</div>
+              <canvas id="canvasA"></canvas>
+            </div>
+            <div class="vs-divider">
+              <span class="vs">VS</span>
+              <span class="answer" id="equivalentBadge">?</span>
+            </div>
+            <div class="image-container">
+              <div class="label" id="labelB">Image B</div>
+              <canvas id="canvasB"></canvas>
+            </div>
+          </div>
+          
+          <div class="pair-info">
+            <div class="pair-info-grid">
+              <div class="info-item">
+                <div class="label">Pair ID</div>
+                <div class="value cyan" id="infoPairId">-</div>
+              </div>
+              <div class="info-item">
+                <div class="label">难度分数</div>
+                <div class="value gold" id="infoDifficulty">-</div>
+              </div>
+              <div class="info-item">
+                <div class="label">相似度</div>
+                <div class="value green" id="infoSimilarity">-</div>
+              </div>
+              <div class="info-item">
+                <div class="label">拓扑类型</div>
+                <div class="value" id="infoTopo">-</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Toast -->
+    <div class="toast" id="toast">
+      <span id="toastMsg"></span>
+    </div>
+
+    <script type="module">
+      import { generateInvarianceDataset, pairsToJsonl, generateDatasetMetadata } from './src/invariance-generator.js';
+      import { renderSingleImage, dataUrlToBlob } from './src/invariance-renderer.js';
+
+      // DOM Elements
+      const seedEl = document.getElementById('seed');
+      const numPairsEl = document.getElementById('numPairs');
+      const imageSizeEl = document.getElementById('imageSize');
+      const positiveRatioEl = document.getElementById('positiveRatio');
+      const easyPctEl = document.getElementById('easyPct');
+      const mediumPctEl = document.getElementById('mediumPct');
+      const hardPctEl = document.getElementById('hardPct');
+      const deformMinEl = document.getElementById('deformMin');
+      const deformMaxEl = document.getElementById('deformMax');
+      const radiusMinEl = document.getElementById('radiusMin');
+      const radiusMaxEl = document.getElementById('radiusMax');
+      const includeDeceptiveEl = document.getElementById('includeDeceptive');
+      
+      const btnGenerate = document.getElementById('btnGenerate');
+      const btnExport = document.getElementById('btnExport');
+      const btnPrev = document.getElementById('btnPrev');
+      const btnNext = document.getElementById('btnNext');
+      
+      const progressSection = document.getElementById('progressSection');
+      const progressBar = document.getElementById('progressBar');
+      const progressText = document.getElementById('progressText');
+      const progressPct = document.getElementById('progressPct');
+      
+      const exportProgressSection = document.getElementById('exportProgressSection');
+      const exportProgressBar = document.getElementById('exportProgressBar');
+      const exportProgressText = document.getElementById('exportProgressText');
+      const exportProgressPct = document.getElementById('exportProgressPct');
+      
+      const statsCard = document.getElementById('statsCard');
+      const emptyState = document.getElementById('emptyState');
+      const pairPreview = document.getElementById('pairPreview');
+      
+      const canvasA = document.getElementById('canvasA');
+      const canvasB = document.getElementById('canvasB');
+      const ctxA = canvasA.getContext('2d');
+      const ctxB = canvasB.getContext('2d');
+
+      // State
+      let dataset = null;
+      let renderedImages = [];
+      let currentPairIndex = 0;
+      let isGenerating = false;
+      let isExporting = false;
+      
+      // Update slider labels
+      function updateSliderLabels() {
+        document.getElementById('easyPctVal').textContent = easyPctEl.value + '%';
+        document.getElementById('mediumPctVal').textContent = mediumPctEl.value + '%';
+        document.getElementById('hardPctVal').textContent = hardPctEl.value + '%';
+        document.getElementById('deformRangeVal').textContent = 
+          `${parseFloat(deformMinEl.value).toFixed(2)} - ${parseFloat(deformMaxEl.value).toFixed(2)}`;
+        document.getElementById('radiusRangeVal').textContent = 
+          `${parseFloat(radiusMinEl.value).toFixed(2)} - ${parseFloat(radiusMaxEl.value).toFixed(2)}`;
+      }
+      
+      [easyPctEl, mediumPctEl, hardPctEl, deformMinEl, deformMaxEl, radiusMinEl, radiusMaxEl].forEach(el => {
+        el.addEventListener('input', updateSliderLabels);
+      });
+      updateSliderLabels();
+      
+      // Toast
+      function showToast(msg, type = 'info') {
+        const toast = document.getElementById('toast');
+        const toastMsg = document.getElementById('toastMsg');
+        toast.className = 'toast ' + type;
+        toastMsg.textContent = msg;
+        toast.classList.add('show');
+        setTimeout(() => toast.classList.remove('show'), 4000);
+      }
+      
+      // Progress
+      function updateProgress(current, total, text) {
+        const pct = Math.round((current / total) * 100);
+        progressBar.style.width = pct + '%';
+        progressText.textContent = text;
+        progressPct.textContent = pct + '%';
+      }
+
+      // Export Progress
+      function updateExportProgress(current, total, text) {
+        const pct = Math.round((current / total) * 100);
+        exportProgressBar.style.width = pct + '%';
+        exportProgressText.textContent = text;
+        exportProgressPct.textContent = pct + '%';
+      }
+
+      // Display pair
+      function displayPair(index) {
+        if (!dataset || index < 0 || index >= dataset.pairs.length) return;
+        
+        currentPairIndex = index;
+        const pair = dataset.pairs[index];
+        const images = renderedImages[index];
+        
+        // Update navigation
+        document.getElementById('pairIndex').textContent = `${index + 1} / ${dataset.pairs.length}`;
+        btnPrev.disabled = index === 0;
+        btnNext.disabled = index === dataset.pairs.length - 1;
+
+        // Draw images
+        const size = parseInt(imageSizeEl.value);
+        canvasA.width = size;
+        canvasA.height = size;
+        canvasB.width = size;
+        canvasB.height = size;
+        
+        if (images) {
+          const imgA = new Image();
+          imgA.onload = () => ctxA.drawImage(imgA, 0, 0, size, size);
+          imgA.src = images.imageA;
+          
+          const imgB = new Image();
+          imgB.onload = () => ctxB.drawImage(imgB, 0, 0, size, size);
+          imgB.src = images.imageB;
+        }
+        
+        // Update labels
+        document.getElementById('labelA').textContent = pair.imageA.knotType;
+        document.getElementById('labelB').textContent = pair.imageB.knotType;
+        
+        // Update badge
+        const badge = document.getElementById('equivalentBadge');
+        if (pair.label_equivalent) {
+          badge.textContent = '✓ 等价';
+          badge.className = 'answer equivalent';
+        } else {
+          badge.textContent = '✗ 不等价';
+          badge.className = 'answer not-equivalent';
+        }
+        
+        // Update info
+        document.getElementById('infoPairId').textContent = pair.pairId;
+        document.getElementById('infoDifficulty').textContent = 
+          (typeof pair.difficulty === 'string')
+            ? `${pair.difficulty_score.toFixed(3)} (${pair.difficulty})`
+            : pair.difficulty_score.toFixed(3);
+        document.getElementById('infoSimilarity').textContent = pair.similarity_score.toFixed(3);
+        document.getElementById('infoTopo').textContent = 
+          pair.label_equivalent 
+            ? pair.topologicalIdA 
+            : `${pair.topologicalIdA} ≠ ${pair.topologicalIdB}`;
+      }
+
+      // Generate dataset
+      async function generate() {
+        if (isGenerating) return;
+        isGenerating = true;
+        
+        const startTime = Date.now();
+
+        // Get config
+        const config = {
+          numPairs: parseInt(numPairsEl.value) || 20,
+          positiveRatio: parseFloat(positiveRatioEl.value) || 0.5,
+          seed: seedEl.value || 'invariance-v1',
+          difficultyDistribution: {
+            easy: parseInt(easyPctEl.value) || 33,
+            medium: parseInt(mediumPctEl.value) || 34,
+            hard: parseInt(hardPctEl.value) || 33,
+          },
+          includeDeceptive: includeDeceptiveEl.checked,
+        };
+        
+        // Show progress
+        progressSection.classList.add('active');
+        btnGenerate.disabled = true;
+        btnExport.disabled = true;
+        emptyState.style.display = 'none';
+        statsCard.style.display = 'none';
+        
+        try {
+          // Generate pairs metadata
+          updateProgress(0, config.numPairs * 2 + 1, '生成 Pair 元数据...');
+          await new Promise(r => setTimeout(r, 50));
+          
+          dataset = generateInvarianceDataset(config);
+          renderedImages = new Array(dataset.pairs.length).fill(null);
+
+          // Render images
+          const size = parseInt(imageSizeEl.value);
+          
+          for (let i = 0; i < dataset.pairs.length; i++) {
+            const pair = dataset.pairs[i];
+            
+            updateProgress(i * 2 + 1, config.numPairs * 2 + 1, `渲染 ${pair.pairId} 图片 A...`);
+            const imageA = await renderSingleImage(pair.imageA, { width: size, height: size });
+            
+            updateProgress(i * 2 + 2, config.numPairs * 2 + 1, `渲染 ${pair.pairId} 图片 B...`);
+            const imageB = await renderSingleImage(pair.imageB, { width: size, height: size });
+            
+            renderedImages[i] = { imageA, imageB };
+
+            // Allow UI to update
+            await new Promise(r => setTimeout(r, 10));
+          }
+          
+          // Done
+          const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+          
+          // Update stats
+          document.getElementById('statTotal').textContent = dataset.statistics.total;
+          document.getElementById('statPositive').textContent = dataset.statistics.positive;
+          document.getElementById('statNegative').textContent = dataset.statistics.negative;
+          document.getElementById('statTime').textContent = elapsed + 's';
+          
+          statsCard.style.display = 'block';
+          pairPreview.style.display = 'flex';
+          btnExport.disabled = false;
+          
+          // Show first pair
+          displayPair(0);
+          
+          showToast(`成功生成 ${dataset.pairs.length} 个 Pairs！`, 'success');
+          
+        } catch (err) {
+          console.error(err);
+          showToast('生成失败: ' + err.message, 'error');
+        } finally {
+          progressSection.classList.remove('active');
+          btnGenerate.disabled = false;
+          isGenerating = false;
+        }
+      }
+      
+      // Convert Data URL to Blob
+      function dataURLtoBlob(dataUrl) {
+        const parts = dataUrl.split(',');
+        const mime = parts[0].match(/:(.*?);/)[1];
+        const bstr = atob(parts[1]);
+        let n = bstr.length;
+        const u8arr = new Uint8Array(n);
+        while (n--) {
+          u8arr[n] = bstr.charCodeAt(n);
+        }
+        return new Blob([u8arr], { type: mime });
+      }
+      
+      // Export ZIP using JSZip
+      async function exportZip() {
+        if (!dataset || renderedImages.length === 0) {
+          showToast('请先生成数据集', 'error');
+          return;
+        }
+
+        if (isExporting) return;
+        isExporting = true;
+        
+        // Check if JSZip is loaded
+        if (typeof JSZip === 'undefined') {
+          showToast('JSZip 库未加载，请检查网络连接', 'error');
+          isExporting = false;
+          return;
+        }
+        
+        exportProgressSection.classList.add('active');
+        btnExport.disabled = true;
+        
+        try {
+          const zip = new JSZip();
+          const imgFolder = zip.folder('images');
+          const totalSteps = dataset.pairs.length * 2 + 2;
+          let currentStep = 0;
+          
+          // Add info.json
+          updateExportProgress(currentStep++, totalSteps, '添加 info.json...');
+          const metadata = generateDatasetMetadata(dataset);
+          zip.file('info.json', JSON.stringify(metadata, null, 2));
+          
+          // Add metadata.jsonl
+          updateExportProgress(currentStep++, totalSteps, '添加 metadata.jsonl...');
+          const jsonl = pairsToJsonl(dataset.pairs);
+          zip.file('metadata.jsonl', jsonl);
+          
+          // Add images
+          for (let i = 0; i < dataset.pairs.length; i++) {
+            const pair = dataset.pairs[i];
+            const images = renderedImages[i];
+            
+            if (images) {
+              // Image A
+              updateExportProgress(currentStep++, totalSteps, `压缩 ${pair.imagePathA}...`);
+              const blobA = dataURLtoBlob(images.imageA);
+              imgFolder.file(pair.imagePathA, blobA);
+              
+              // Image B
+              updateExportProgress(currentStep++, totalSteps, `压缩 ${pair.imagePathB}...`);
+              const blobB = dataURLtoBlob(images.imageB);
+              imgFolder.file(pair.imagePathB, blobB);
+            }
+            
+            // Allow UI to update
+            await new Promise(r => setTimeout(r, 5));
+        }
+
+          // Generate ZIP file
+          updateExportProgress(totalSteps - 1, totalSteps, '生成 ZIP 文件...');
+          
+          const zipBlob = await zip.generateAsync({
+            type: 'blob',
+            compression: 'DEFLATE',
+            compressionOptions: { level: 6 },
+          }, (meta) => {
+            // Progress callback during compression
+            updateExportProgress(
+              totalSteps - 1 + meta.percent / 100,
+              totalSteps,
+              `压缩中... ${Math.round(meta.percent)}%`
+            );
+          });
+
+        // Download
+          const safeSeed = dataset.config.seed.replace(/[^a-zA-Z0-9._-]+/g, '_').slice(0, 30);
+          const filename = `knot_invariance_${safeSeed}_N${dataset.pairs.length}.zip`;
+          
+          const url = URL.createObjectURL(zipBlob);
+        const a = document.createElement('a');
+        a.href = url;
+          a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+          document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+          showToast(`已下载 ${filename} (${(zipBlob.size / 1024 / 1024).toFixed(2)} MB)`, 'success');
+          
+        } catch (err) {
+          console.error(err);
+          showToast('导出失败: ' + err.message, 'error');
+        } finally {
+          exportProgressSection.classList.remove('active');
+          btnExport.disabled = false;
+          isExporting = false;
+        }
+      }
+      
+      // Event listeners
+      btnGenerate.addEventListener('click', generate);
+      btnExport.addEventListener('click', exportZip);
+      
+      btnPrev.addEventListener('click', () => {
+        if (currentPairIndex > 0) displayPair(currentPairIndex - 1);
+      });
+      
+      btnNext.addEventListener('click', () => {
+        if (dataset && currentPairIndex < dataset.pairs.length - 1) {
+          displayPair(currentPairIndex + 1);
+        }
+      });
+
+      // Keyboard navigation
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowLeft') btnPrev.click();
+        if (e.key === 'ArrowRight') btnNext.click();
+      });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>H5 Knot — Unified Gallery & Dataset Generator</title>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+        }
+      }
+    </script>
+    <style>
+      :root {
+        --bg: #0f1220;
+        --panel: #151a2e;
+        --accent: #2a335a;
+        --cyan: #72e6ff;
+        --gold: #ffd08a;
+        --red: #ff6b6b;
+        --green: #6bcb77;
+        --text: #e6e6e6;
+        --muted: #9aa3c7;
+      }
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body { 
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; 
+        background: var(--bg); 
+        color: var(--text); 
+        height: 100vh; 
+        overflow: hidden; 
+      }
+      #app { display: flex; height: 100vh; }
+      
+      .panel {
+        width: 340px;
+        background: var(--panel);
+        border-right: 1px solid var(--accent);
+        padding: 14px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        overflow-y: auto;
+        overflow-x: hidden;
+      }
+      .panel::-webkit-scrollbar { width: 6px; }
+      .panel::-webkit-scrollbar-track { background: var(--bg); }
+      .panel::-webkit-scrollbar-thumb { background: var(--accent); border-radius: 3px; }
+      
+      h1 { font-size: 18px; font-weight: 700; color: var(--cyan); }
+      h1 span { color: var(--gold); }
+      .sub { font-size: 11px; color: var(--muted); line-height: 1.5; }
+      .row { display: flex; gap: 8px; }
+      label { font-size: 11px; color: var(--muted); display: flex; justify-content: space-between; }
+      
+      input, select {
+        width: 100%;
+        padding: 8px 10px;
+        border: 1px solid var(--accent);
+        border-radius: 6px;
+        background: var(--bg);
+        color: var(--text);
+        font-family: inherit;
+        font-size: 12px;
+      }
+      input:focus, select:focus { outline: none; border-color: var(--cyan); }
+      
+      button {
+        padding: 10px;
+        border: none;
+        border-radius: 6px;
+        background: var(--accent);
+        color: var(--text);
+        font-family: inherit;
+        font-size: 12px;
+        cursor: pointer;
+        transition: all 0.15s ease;
+      }
+      button:hover { background: #36417a; transform: translateY(-1px); }
+      button:active { transform: translateY(0); }
+      .btn-primary { background: var(--cyan); color: #0f1220; font-weight: 700; }
+      .btn-primary:hover { background: #5ad4f0; }
+      .btn-gold { background: var(--gold); color: #0f1220; font-weight: 700; }
+      .btn-gold:hover { background: #ffbc60; }
+      
+      .card { 
+        border: 1px solid rgba(114,230,255,0.18); 
+        background: rgba(114,230,255,0.04); 
+        border-radius: 8px; 
+        padding: 10px; 
+      }
+      .card-gold {
+        border-color: rgba(255,208,138,0.35);
+        background: rgba(255,208,138,0.06);
+      }
+      .card-red {
+        border-color: rgba(255,107,107,0.35);
+        background: rgba(255,107,107,0.06);
+      }
+      
+      .section-title {
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--gold);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 8px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .section-title::before {
+        content: '';
+        flex: 0 0 3px;
+        height: 12px;
+        background: var(--gold);
+        border-radius: 2px;
+      }
+      
+      .kv { font-size: 11px; color: var(--muted); line-height: 1.6; }
+      .kv b { color: var(--text); font-weight: 700; }
+      
+      #view { flex: 1; position: relative; }
+      
+      .pill {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 999px;
+        border: 1px solid rgba(255,255,255,0.12);
+        background: rgba(0,0,0,0.22);
+        font-size: 10px;
+        color: var(--muted);
+      }
+      .pill-easy { border-color: var(--green); color: var(--green); }
+      .pill-medium { border-color: var(--gold); color: var(--gold); }
+      .pill-hard { border-color: var(--red); color: var(--red); }
+      
+      /* 滑块样式 */
+      input[type="range"] {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 100%;
+        height: 5px;
+        border-radius: 3px;
+        background: var(--accent);
+        outline: none;
+        cursor: pointer;
+        margin-top: 4px;
+        padding: 0;
+        border: none;
+      }
+      input[type="range"]::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        background: var(--gold);
+        cursor: pointer;
+        border: 2px solid var(--bg);
+        box-shadow: 0 0 4px rgba(255,208,138,0.5);
+      }
+      input[type="range"]::-moz-range-thumb {
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        background: var(--gold);
+        cursor: pointer;
+        border: 2px solid var(--bg);
+      }
+      
+      .collapsible {
+        cursor: pointer;
+        user-select: none;
+      }
+      .collapsible::after {
+        content: '▼';
+        font-size: 9px;
+        margin-left: auto;
+        transition: transform 0.2s;
+      }
+      .collapsible.collapsed::after {
+        transform: rotate(-90deg);
+      }
+      .collapse-content {
+        overflow: hidden;
+        max-height: 1000px;
+        transition: max-height 0.3s ease;
+      }
+      .collapse-content.collapsed {
+        max-height: 0;
+      }
+      
+      a { color: var(--cyan); text-decoration: none; }
+      a:hover { text-decoration: underline; }
+      
+      .tabs {
+        display: flex;
+        gap: 4px;
+        background: var(--bg);
+        padding: 4px;
+        border-radius: 8px;
+        margin-bottom: 10px;
+      }
+      .tab {
+        flex: 1;
+        padding: 8px;
+        text-align: center;
+        font-size: 11px;
+        font-weight: 600;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: all 0.15s;
+        color: var(--muted);
+      }
+      .tab:hover { background: rgba(114,230,255,0.1); }
+      .tab.active { background: var(--cyan); color: var(--bg); }
+      
+      .optgroup-label {
+        font-size: 10px;
+        font-weight: 700;
+        color: var(--gold);
+        padding: 4px 8px;
+        background: rgba(255,208,138,0.1);
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <div class="panel">
+        <!-- Header -->
+        <div>
+          <h1>Knot <span>Gallery</span></h1>
+          <div class="sub">
+            统一的绳结/链环可视化与数据集生成工具。支持 Knots、Links、Benchmark 难度分层。
+          </div>
+        </div>
+
+        <!-- Mode Tabs -->
+        <div class="tabs">
+          <div class="tab active" data-mode="gallery">Gallery 预览</div>
+          <div class="tab" data-mode="dataset">Dataset 生成</div>
+        </div>
+
+        <!-- === 基础设置 === -->
+        <div class="card">
+          <div class="row">
+            <div style="flex: 1">
+              <label>Seed<span>可复现</span></label>
+              <input id="seed" type="text" value="knot-gallery-v1" />
+            </div>
+          </div>
+          <div style="height: 8px"></div>
+          
+          <label>类型选择<span>Knots / Links / All</span></label>
+          <select id="preset">
+            <optgroup label="═══ 基础 Knots ═══">
+              <option value="unknot">○ Unknot（平凡环）</option>
+              <option value="trefoil" selected>∞ Trefoil（三叶结）</option>
+              <option value="figure8">8 Figure-8（8字结）</option>
+            </optgroup>
+            <optgroup label="═══ Torus Knots T(p,q) ═══">
+              <option value="torus_2_5">T(2,5) Cinquefoil — 5 crossings</option>
+              <option value="torus_2_7">T(2,7) Septafoil — 7 crossings</option>
+              <option value="torus_2_9">T(2,9) — 9 crossings</option>
+              <option value="torus_3_4">T(3,4) — 8 crossings</option>
+              <option value="torus_3_5">T(3,5) — 10 crossings</option>
+              <option value="torusKnot_random">🎲 Random Torus Knot</option>
+            </optgroup>
+            <optgroup label="═══ 变体 Unknots ═══">
+              <option value="twisted_ring">〰 Twisted Ring（扭曲环）</option>
+              <option value="spiral_disk">🌀 Spiral Loop（闭环螺旋）</option>
+              <option value="kinky_unknot">⚡ Kinky Unknot（欺骗性 unknot）</option>
+            </optgroup>
+            <optgroup label="═══ Links（多组件）═══">
+              <option value="hopf_link">🔗 Hopf Link（两环相扣）</option>
+              <option value="unlinked_rings">○○ Unlinked Rings（两环不扣）</option>
+              <option value="chain">⛓ Chain（锁链）</option>
+              <option value="borromean">🔵🟡🔴 Borromean Rings</option>
+            </optgroup>
+            <optgroup label="═══ Benchmark 模式 ═══">
+              <option value="benchmark_easy">📗 Benchmark Easy (≤4 crossings)</option>
+              <option value="benchmark_medium">📙 Benchmark Medium (5-6 crossings)</option>
+              <option value="benchmark_hard">📕 Benchmark Hard (≥7 / kinky)</option>
+              <option value="benchmark_mix">📚 Benchmark Mix（分层混合）</option>
+            </optgroup>
+            <optgroup label="═══ 全部 ═══">
+              <option value="all">🌈 All Types（每种一行）</option>
+            </optgroup>
+          </select>
+          
+          <div style="height: 8px"></div>
+          <div class="row">
+            <div style="flex: 1">
+              <label>数量 N<span>1–500</span></label>
+              <input id="count" type="text" value="16" />
+            </div>
+            <div style="flex: 1">
+              <label>网格列数<span>1–50</span></label>
+              <input id="cols" type="text" value="4" />
+            </div>
+          </div>
+        </div>
+
+        <!-- === 渲染设置 === -->
+        <div class="card">
+          <div class="section-title collapsible" data-target="renderSettings">渲染设置</div>
+          <div id="renderSettings" class="collapse-content">
+            <div class="row">
+              <div style="flex: 1">
+                <label>质量<span>面数</span></label>
+                <select id="quality">
+                  <option value="low">Low（快速）</option>
+                  <option value="mid" selected>Mid</option>
+                  <option value="high">High（精细）</option>
+                </select>
+              </div>
+              <div style="flex: 1">
+                <label>摆放<span>布局</span></label>
+                <select id="layout">
+                  <option value="grid" selected>Grid（整齐）</option>
+                  <option value="jitter">Jitter（轻抖动）</option>
+                  <option value="field">Field（散乱）</option>
+                </select>
+              </div>
+            </div>
+            <div style="height: 8px"></div>
+            <div class="row">
+              <div style="flex: 1">
+                <label>线粗<span>0.02–0.6</span></label>
+                <input id="radius" type="text" value="0.24" />
+              </div>
+              <div style="flex: 1">
+                <label>整体缩放<span>0.3–3</span></label>
+                <input id="scale" type="text" value="1.0" />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- === Benchmark 难度设置 === -->
+        <div class="card card-gold" id="benchmarkBox" style="display: none;">
+          <div class="section-title" style="color: var(--gold)">Benchmark 难度分布</div>
+          <div class="row">
+            <div style="flex: 1">
+              <label>Easy %<span class="pill pill-easy">Lv.0</span></label>
+              <input id="easyPct" type="text" value="33" />
+            </div>
+            <div style="flex: 1">
+              <label>Medium %<span class="pill pill-medium">Lv.1</span></label>
+              <input id="mediumPct" type="text" value="34" />
+            </div>
+            <div style="flex: 1">
+              <label>Hard %<span class="pill pill-hard">Lv.2</span></label>
+              <input id="hardPct" type="text" value="33" />
+            </div>
+          </div>
+          <div class="sub" style="margin-top: 8px">
+            <b>Easy:</b> unknot/trefoil/figure-8 (≤4 crossings)<br/>
+            <b>Medium:</b> T(2,5), twist (5-6 crossings)<br/>
+            <b>Hard:</b> ≥7 crossings, kinky unknot
+          </div>
+        </div>
+
+        <!-- === Chain 调试参数 === -->
+        <div class="card card-gold" id="chainDebugBox" style="display: none;">
+          <div class="section-title" style="color: var(--gold)">⛓ 链条参数</div>
+          <div class="row">
+            <div style="flex: 1">
+              <label>环半径 R: <span id="chainRVal" style="color: var(--cyan);">1.5</span></label>
+              <input id="chainR" type="range" min="0.5" max="3" step="0.1" value="1.5" />
+            </div>
+            <div style="flex: 1">
+              <label>环数量: <span id="chainNumLinksVal" style="color: var(--cyan);">4</span></label>
+              <input id="chainNumLinks" type="range" min="2" max="8" step="1" value="4" />
+            </div>
+          </div>
+          <div style="height: 6px"></div>
+          <div class="row">
+            <div style="flex: 1">
+              <label>Y 偏移: <span id="chainOffsetYVal" style="color: var(--cyan);">-2.00</span></label>
+              <input id="chainOffsetY" type="range" min="-5" max="5" step="0.1" value="-2" />
+            </div>
+            <div style="flex: 1">
+              <label>链条间距: <span id="chainSpacingVal" style="color: var(--cyan);">0.00</span></label>
+              <input id="chainSpacing" type="range" min="0" max="5" step="0.1" value="0" />
+            </div>
+          </div>
+          <input id="chainOffsetX" type="hidden" value="0" />
+          <input id="chainOffsetZ" type="hidden" value="0" />
+        </div>
+
+        <!-- === Borromean 调试参数 === -->
+        <div class="card" id="borromeanDebugBox" style="display: none; border-color: rgba(138,208,255,0.4);">
+          <div class="section-title" style="color: var(--cyan)">🔵🟡🔴 Borromean Rings 参数</div>
+          <div class="row">
+            <div style="flex: 1">
+              <label>主半径 R: <span id="borromeanRVal" style="color: var(--gold);">1.50</span></label>
+              <input id="borromeanR" type="range" min="0.5" max="3" step="0.05" value="1.5" />
+            </div>
+            <div style="flex: 1">
+              <label>椭圆比例: <span id="borromeanRatioVal" style="color: var(--gold);">1.60</span></label>
+              <input id="borromeanRatio" type="range" min="1.0" max="2.5" step="0.05" value="1.6" />
+            </div>
+          </div>
+          <div style="margin: 8px 0; padding: 6px; background: rgba(255,220,50,0.1); border-radius: 4px; font-size: 10px;">
+            🟡 黄环 Y: <span id="borromeanYellowYVal">0</span>
+            <input id="borromeanYellowY" type="range" min="-3" max="3" step="0.05" value="0" style="margin-top: 4px;" />
+          </div>
+          <div style="padding: 6px; background: rgba(80,120,255,0.1); border-radius: 4px; font-size: 10px;">
+            🔵 蓝环 Y: <span id="borromeanBlueYVal">0</span>
+            <input id="borromeanBlueY" type="range" min="-3" max="3" step="0.05" value="0" style="margin-top: 4px;" />
+          </div>
+          <input id="borromeanYellowX" type="hidden" value="0" />
+          <input id="borromeanYellowZ" type="hidden" value="0" />
+          <input id="borromeanBlueX" type="hidden" value="0" />
+          <input id="borromeanBlueZ" type="hidden" value="0" />
+        </div>
+
+        <!-- === Spiral Loop 参数 === -->
+        <div class="card" id="spiralLoopBox" style="display: none; border-color: rgba(114,230,255,0.3);">
+          <div class="section-title" style="color: var(--cyan)">🌀 Spiral Loop 参数（闭环螺旋）</div>
+          <div class="row">
+            <div style="flex: 1">
+              <label>圈数: <span id="spiralTurnsVal" style="color: var(--gold);">3</span></label>
+              <input id="spiralTurns" type="range" min="1" max="6" step="1" value="3" />
+            </div>
+            <div style="flex: 1">
+              <label>层间距: <span id="spiralPitchVal" style="color: var(--gold);">0.15</span></label>
+              <input id="spiralPitch" type="range" min="0.05" max="0.4" step="0.05" value="0.15" />
+            </div>
+          </div>
+          <div style="height: 6px"></div>
+          <div class="row">
+            <div style="flex: 1">
+              <label>圈间距: <span id="spiralGapVal" style="color: var(--gold);">0.25</span></label>
+              <input id="spiralGap" type="range" min="0.15" max="0.5" step="0.05" value="0.25" />
+            </div>
+            <div style="flex: 1">
+              <label>回接方式<span>复杂度</span></label>
+              <select id="spiralConnector">
+                <option value="0">直连（简单）</option>
+                <option value="1" selected>S 型弯（中等）</option>
+                <option value="2">双 S 弯（复杂）</option>
+              </select>
+            </div>
+          </div>
+          <div class="sub" style="margin-top: 6px; color: var(--cyan);">
+            ℹ️ 几何上复杂，但拓扑仍是 Unknot（可解开）
+          </div>
+        </div>
+
+        <!-- === Kinky Unknot 参数 === -->
+        <div class="card card-red" id="kinkyBox" style="display: none;">
+          <div class="section-title" style="color: var(--red)">⚡ Kinky Unknot 参数</div>
+          <div class="row">
+            <div style="flex: 1">
+              <label>Kink 数量: <span id="kinkCountVal" style="color: var(--cyan);">4</span></label>
+              <input id="kinkCount" type="range" min="2" max="8" step="1" value="4" />
+            </div>
+            <div style="flex: 1">
+              <label>Kink 振幅: <span id="kinkAmplitudeVal" style="color: var(--cyan);">0.25</span></label>
+              <input id="kinkAmplitude" type="range" min="0.1" max="0.5" step="0.05" value="0.25" />
+            </div>
+          </div>
+          <div class="sub" style="margin-top: 6px; color: var(--red);">
+            ⚠️ 拓扑上是 Unknot，但视觉上有很多"交叉"——用于测试 VLM 的拓扑理解能力
+          </div>
+        </div>
+
+        <!-- === Dataset 模式专用设置 === -->
+        <div class="card" id="datasetBox" style="display: none;">
+          <div class="section-title">Dataset 生成设置</div>
+          <div class="row">
+            <div style="flex: 1">
+              <label>拓扑类型<span>端点</span></label>
+              <select id="topology">
+                <option value="closed" selected>Closed Loop（闭环）</option>
+                <option value="open">Open-ended（开链）</option>
+                <option value="mix">Mix（混合）</option>
+              </select>
+            </div>
+          </div>
+          <div style="height: 8px"></div>
+          <div class="row">
+            <div style="flex: 1">
+              <label>变形强度<span>0–1</span></label>
+              <input id="deform" type="text" value="0.25" />
+            </div>
+            <div style="flex: 1">
+              <label>Open 比例<span>仅 mix</span></label>
+              <input id="openProb" type="text" value="0.5" />
+            </div>
+          </div>
+        </div>
+
+        <!-- === 操作按钮 === -->
+        <div class="row">
+          <button id="btnGenerate" class="btn-primary" style="flex: 2">生成 / 刷新</button>
+          <button id="btnExport" class="btn-gold" style="flex: 1; display: none;">导出 JSON</button>
+        </div>
+
+        <!-- === 状态显示 === -->
+        <div class="card kv" id="status">
+          <div><b>状态</b>：待初始化</div>
+          <div><b>Three</b>：-</div>
+          <div><b>预设</b>：-</div>
+          <div><b>实例</b>：-</div>
+        </div>
+
+        <div class="sub">
+          运行：<code>python3 -m http.server 8080</code><br/>
+          打开：<code>http://localhost:8080/knot_gallery.html</code>
+        </div>
+      </div>
+      
+      <div id="view"></div>
+    </div>
+
+    <script type="module" src="./src/unified-gallery.js"></script>
+    <script>
+      // === UI 同步逻辑 ===
+      (function () {
+        const preset = document.getElementById('preset');
+        const benchmarkBox = document.getElementById('benchmarkBox');
+        const chainDebugBox = document.getElementById('chainDebugBox');
+        const borromeanDebugBox = document.getElementById('borromeanDebugBox');
+        const kinkyBox = document.getElementById('kinkyBox');
+        const spiralLoopBox = document.getElementById('spiralLoopBox');
+        const datasetBox = document.getElementById('datasetBox');
+        const btnExport = document.getElementById('btnExport');
+        const tabs = document.querySelectorAll('.tab');
+        
+        let currentMode = 'gallery';
+        
+        // Tab 切换
+        tabs.forEach(tab => {
+          tab.addEventListener('click', () => {
+            tabs.forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+            currentMode = tab.dataset.mode;
+            syncUI();
+          });
+        });
+        
+        // 折叠面板
+        document.querySelectorAll('.collapsible').forEach(el => {
+          el.addEventListener('click', () => {
+            const target = document.getElementById(el.dataset.target);
+            if (target) {
+              el.classList.toggle('collapsed');
+              target.classList.toggle('collapsed');
+            }
+          });
+        });
+        
+        // 滑块值同步
+        const sliders = [
+          ['chainR', 'chainRVal', 1],
+          ['chainNumLinks', 'chainNumLinksVal', 0],
+          ['chainOffsetY', 'chainOffsetYVal', 2],
+          ['chainSpacing', 'chainSpacingVal', 2],
+          ['borromeanR', 'borromeanRVal', 2],
+          ['borromeanRatio', 'borromeanRatioVal', 2],
+          ['borromeanYellowY', 'borromeanYellowYVal', 2],
+          ['borromeanBlueY', 'borromeanBlueYVal', 2],
+          ['kinkCount', 'kinkCountVal', 0],
+          ['kinkAmplitude', 'kinkAmplitudeVal', 2],
+          ['spiralTurns', 'spiralTurnsVal', 0],
+          ['spiralPitch', 'spiralPitchVal', 2],
+          ['spiralGap', 'spiralGapVal', 2],
+        ];
+        
+        sliders.forEach(([sliderId, valId, decimals]) => {
+          const slider = document.getElementById(sliderId);
+          const valEl = document.getElementById(valId);
+          if (slider && valEl) {
+            const update = () => {
+              valEl.textContent = parseFloat(slider.value).toFixed(decimals);
+            };
+            update();
+            slider.addEventListener('input', update);
+          }
+        });
+        
+        function syncUI() {
+          const presetVal = preset ? preset.value : 'trefoil';
+          const isDatasetMode = currentMode === 'dataset';
+          
+          // 显示/隐藏 Dataset 相关
+          if (datasetBox) datasetBox.style.display = isDatasetMode ? 'block' : 'none';
+          if (btnExport) btnExport.style.display = isDatasetMode ? 'block' : 'none';
+          
+          // 显示/隐藏特定类型参数面板
+          const isBenchmark = presetVal.startsWith('benchmark');
+          const isChain = presetVal === 'chain';
+          const isBorromean = presetVal === 'borromean';
+          const isKinky = presetVal === 'kinky_unknot';
+          const isSpiralLoop = presetVal === 'spiral_disk';
+          
+          if (benchmarkBox) benchmarkBox.style.display = isBenchmark ? 'block' : 'none';
+          if (chainDebugBox) chainDebugBox.style.display = isChain ? 'block' : 'none';
+          if (borromeanDebugBox) borromeanDebugBox.style.display = isBorromean ? 'block' : 'none';
+          if (kinkyBox) kinkyBox.style.display = isKinky ? 'block' : 'none';
+          if (spiralLoopBox) spiralLoopBox.style.display = isSpiralLoop ? 'block' : 'none';
+        }
+        
+        if (preset) preset.addEventListener('change', syncUI);
+        syncUI();
+      })();
+    </script>
+  </body>
+</html>
+

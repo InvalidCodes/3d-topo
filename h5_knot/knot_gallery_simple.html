@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>H5 Knot — Knot Gallery（可选预设）</title>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+        }
+      }
+    </script>
+    <style>
+      :root {
+        --bg: #0f1220;
+        --panel: #151a2e;
+        --accent: #2a335a;
+        --cyan: #72e6ff;
+        --gold: #ffd08a;
+        --text: #e6e6e6;
+        --muted: #9aa3c7;
+      }
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; background: var(--bg); color: var(--text); height: 100vh; overflow: hidden; }
+      #app { display: flex; height: 100vh; }
+      .panel {
+        width: 320px;
+        background: var(--panel);
+        border-right: 1px solid var(--accent);
+        padding: 14px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        overflow: auto;
+      }
+      h1 { font-size: 16px; font-weight: 700; color: var(--cyan); }
+      h1 span { color: var(--gold); }
+      .sub { font-size: 11px; color: var(--muted); line-height: 1.5; }
+      .row { display: flex; gap: 8px; }
+      label { font-size: 11px; color: var(--muted); display: flex; justify-content: space-between; }
+      input, select {
+        width: 100%;
+        padding: 10px;
+        border: 1px solid var(--accent);
+        border-radius: 8px;
+        background: var(--bg);
+        color: var(--text);
+        font-family: inherit;
+        font-size: 12px;
+      }
+      input:focus, select:focus { outline: none; border-color: var(--cyan); }
+      button {
+        padding: 10px;
+        border: none;
+        border-radius: 8px;
+        background: var(--accent);
+        color: var(--text);
+        font-family: inherit;
+        font-size: 12px;
+        cursor: pointer;
+        transition: transform 0.08s ease;
+      }
+      button:hover { background: #36417a; }
+      button:active { transform: translateY(1px); }
+      .btn-primary { background: var(--cyan); color: #0f1220; font-weight: 800; }
+      .btn-primary:hover { background: #5ad4f0; }
+      .card { border: 1px solid rgba(114,230,255,0.18); background: rgba(114,230,255,0.06); border-radius: 10px; padding: 10px; }
+      .kv { font-size: 11px; color: var(--muted); line-height: 1.6; }
+      .kv b { color: var(--text); font-weight: 700; }
+      #view { flex: 1; position: relative; }
+      a { color: var(--cyan); text-decoration: none; }
+      a:hover { text-decoration: underline; }
+      .pill {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 999px;
+        border: 1px solid rgba(255,255,255,0.12);
+        background: rgba(0,0,0,0.22);
+        font-size: 10px;
+        color: var(--muted);
+      }
+      /* 滑块样式 */
+      input[type="range"] {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 100%;
+        height: 6px;
+        border-radius: 3px;
+        background: var(--accent);
+        outline: none;
+        cursor: pointer;
+        margin-top: 4px;
+      }
+      input[type="range"]::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        background: var(--gold);
+        cursor: pointer;
+        border: 2px solid var(--bg);
+        box-shadow: 0 0 4px rgba(255,208,138,0.5);
+      }
+      input[type="range"]::-moz-range-thumb {
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        background: var(--gold);
+        cursor: pointer;
+        border: 2px solid var(--bg);
+      }
+      input[type="range"]:hover::-webkit-slider-thumb {
+        box-shadow: 0 0 8px rgba(255,208,138,0.8);
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <div class="panel">
+        <div>
+          <h1>Knot <span>Gallery</span></h1>
+          <div class="sub">
+            这里不做“复杂随机绳结数据集”，而是提供**可选预设**（环 / 三叶结 / 8字结 / 扭曲环 / 多种 torus-knot…），并支持一次铺满很多个（图二那种效果）。
+          </div>
+        </div>
+
+        <div class="card">
+          <label>Seed（仅用于颜色/摆放，可复现）<span>字符串</span></label>
+          <input id="seed" type="text" value="knot-gallery-v1" />
+          <div style="height: 8px"></div>
+          <label>预设类型<span>主动选择</span></label>
+          <select id="preset"></select>
+          <div style="height: 8px"></div>
+          <div class="row">
+            <div style="flex: 1">
+              <label>数量 N<span>1–5000</span></label>
+              <input id="count" type="text" value="1" />
+            </div>
+            <div style="flex: 1">
+              <label>网格列数<span>1–200</span></label>
+              <input id="cols" type="text" value="6" />
+            </div>
+          </div>
+          <div style="height: 8px"></div>
+          <div class="row">
+            <div style="flex: 1">
+              <label>质量（面数）<span>粗略</span></label>
+              <select id="quality">
+                <option value="low">low（更快）</option>
+                <option value="mid" selected>mid</option>
+                <option value="high">high（更细）</option>
+              </select>
+            </div>
+            <div style="flex: 1">
+              <label>摆放方式<span>视觉</span></label>
+              <select id="layout">
+                <option value="grid" selected>grid（整齐）</option>
+                <option value="jitter">jitter（轻随机）</option>
+                <option value="field">field（更散）</option>
+              </select>
+            </div>
+          </div>
+          <div style="height: 8px"></div>
+          <div class="row">
+            <div style="flex: 1">
+              <label>线粗（tube）<span>0.02–0.6</span></label>
+              <input id="radius" type="text" value="0.24" />
+            </div>
+            <div style="flex: 1">
+              <label>整体缩放<span>0.3–3</span></label>
+              <input id="scale" type="text" value="1.0" />
+            </div>
+          </div>
+          <div class="sub" style="margin-top: 8px">
+            提示：如果你想要"每一种都铺一行"，可以选 <span class="pill">全部种类（All）</span>。
+          </div>
+        </div>
+
+        <!-- 链条调试参数（仅当选择 chain 时显示） -->
+        <div class="card" id="chainDebugBox" style="display: none; border-color: rgba(255,208,138,0.4); background: rgba(255,208,138,0.08);">
+          <div style="font-size: 12px; font-weight: 700; color: var(--gold); margin-bottom: 8px;">🔗 链条参数调试（实时预览）</div>
+          <div class="row">
+            <div style="flex: 1">
+              <label>环半径 R: <span id="chainRVal" style="color: var(--cyan);">1.5</span></label>
+              <input id="chainR" type="range" min="0.5" max="3" step="0.1" value="1.5" />
+            </div>
+            <div style="flex: 1">
+              <label>环数量: <span id="chainNumLinksVal" style="color: var(--cyan);">4</span></label>
+              <input id="chainNumLinks" type="range" min="2" max="8" step="1" value="4" />
+            </div>
+          </div>
+          <div style="height: 8px"></div>
+          <div class="row">
+            <div style="flex: 1">
+              <label>奇数环 X 偏移: <span id="chainOffsetXVal" style="color: var(--cyan);">0.00</span></label>
+              <input id="chainOffsetX" type="range" min="-5" max="5" step="0.1" value="0" />
+            </div>
+            <div style="flex: 1">
+              <label>奇数环 Y 偏移: <span id="chainOffsetYVal" style="color: var(--cyan);">-2.00</span></label>
+              <input id="chainOffsetY" type="range" min="-5" max="5" step="0.1" value="-2" />
+            </div>
+          </div>
+          <div style="height: 8px"></div>
+          <div class="row">
+            <div style="flex: 1">
+              <label>奇数环 Z 偏移: <span id="chainOffsetZVal" style="color: var(--cyan);">0.00</span></label>
+              <input id="chainOffsetZ" type="range" min="-5" max="5" step="0.1" value="0" />
+            </div>
+            <div style="flex: 1">
+              <label>链条间距 (×R): <span id="chainSpacingVal" style="color: var(--cyan);">0.00</span></label>
+              <input id="chainSpacing" type="range" min="0" max="5" step="0.1" value="0" />
+            </div>
+          </div>
+          <div class="sub" style="margin-top: 6px; color: var(--gold);">
+            拖动滑块实时预览。「环数量」控制链条长度。<br>
+            完美相扣参数：Y偏移≈-2.0（当 R=1.5 时）
+          </div>
+        </div>
+
+        <!-- Borromean Rings 调试参数（仅当选择 borromean 时显示） -->
+        <div class="card" id="borromeanDebugBox" style="display: none; border-color: rgba(138,208,255,0.4); background: rgba(138,208,255,0.08);">
+          <div style="font-size: 12px; font-weight: 700; color: var(--cyan); margin-bottom: 8px;">🔵🟡🔴 Borromean Rings 参数（实时预览）</div>
+          
+          <!-- 基础参数 -->
+          <div class="row">
+            <div style="flex: 1">
+              <label>主半径 R: <span id="borromeanRVal" style="color: var(--gold);">1.50</span></label>
+              <input id="borromeanR" type="range" min="0.5" max="3" step="0.05" value="1.5" />
+            </div>
+            <div style="flex: 1">
+              <label>椭圆比例: <span id="borromeanRatioVal" style="color: var(--gold);">1.60</span></label>
+              <input id="borromeanRatio" type="range" min="1.0" max="2.5" step="0.05" value="1.6" />
+            </div>
+          </div>
+          
+          <!-- 红环固定说明 -->
+          <div style="margin: 10px 0 6px 0; padding: 6px 8px; background: rgba(255,100,100,0.15); border-radius: 4px; font-size: 11px;">
+            🔴 <b>红环</b>：固定在 XY 平面（原点）
+          </div>
+          
+          <!-- 黄环偏移 -->
+          <div style="margin: 6px 0; padding: 6px 8px; background: rgba(255,220,50,0.15); border-radius: 4px;">
+            <div style="font-size: 11px; margin-bottom: 4px;">🟡 <b>黄环</b>（YZ 平面）偏移：</div>
+            <div class="row">
+              <div style="flex: 1">
+                <label>X: <span id="borromeanYellowXVal" style="color: var(--gold);">0.00</span></label>
+                <input id="borromeanYellowX" type="range" min="-3" max="3" step="0.05" value="0" />
+              </div>
+              <div style="flex: 1">
+                <label>Y: <span id="borromeanYellowYVal" style="color: var(--gold);">0.00</span></label>
+                <input id="borromeanYellowY" type="range" min="-3" max="3" step="0.05" value="0" />
+              </div>
+              <div style="flex: 1">
+                <label>Z: <span id="borromeanYellowZVal" style="color: var(--gold);">0.00</span></label>
+                <input id="borromeanYellowZ" type="range" min="-3" max="3" step="0.05" value="0" />
+              </div>
+            </div>
+          </div>
+          
+          <!-- 蓝环偏移 -->
+          <div style="margin: 6px 0; padding: 6px 8px; background: rgba(80,120,255,0.15); border-radius: 4px;">
+            <div style="font-size: 11px; margin-bottom: 4px;">🔵 <b>蓝环</b>（XZ 平面）偏移：</div>
+            <div class="row">
+              <div style="flex: 1">
+                <label>X: <span id="borromeanBlueXVal" style="color: var(--cyan);">0.00</span></label>
+                <input id="borromeanBlueX" type="range" min="-3" max="3" step="0.05" value="0" />
+              </div>
+              <div style="flex: 1">
+                <label>Y: <span id="borromeanBlueYVal" style="color: var(--cyan);">0.00</span></label>
+                <input id="borromeanBlueY" type="range" min="-3" max="3" step="0.05" value="0" />
+              </div>
+              <div style="flex: 1">
+                <label>Z: <span id="borromeanBlueZVal" style="color: var(--cyan);">0.00</span></label>
+                <input id="borromeanBlueZ" type="range" min="-3" max="3" step="0.05" value="0" />
+              </div>
+            </div>
+          </div>
+          
+          <div class="sub" style="margin-top: 6px; color: var(--cyan);">
+            红环固定，调整黄环和蓝环的偏移让三环正确穿越且不穿模。
+          </div>
+        </div>
+
+        <div class="row">
+          <button id="btnGenerate" class="btn-primary" style="flex: 1">生成 / 刷新</button>
+        </div>
+
+        <div class="card kv" id="status">
+          <div><b>状态</b>：待初始化</div>
+          <div><b>Three</b>：-</div>
+          <div><b>预设</b>：-</div>
+          <div><b>实例</b>：-</div>
+        </div>
+
+        <div class="sub">
+          运行方式：`python3 -m http.server 8080`（或任意端口），浏览器打开 `http://localhost:8080/knot_gallery.html`
+        </div>
+      </div>
+      <div id="view"></div>
+    </div>
+    <script type="module" src="./src/knot-gallery.js"></script>
+  </body>
+</html>
+
+

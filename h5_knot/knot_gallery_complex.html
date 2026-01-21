@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>H5 Knot — Dataset Generator (Three.js)</title>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+        }
+      }
+    </script>
+    <style>
+      :root {
+        --bg: #0f1220;
+        --panel: #151a2e;
+        --accent: #2a335a;
+        --cyan: #72e6ff;
+        --gold: #ffd08a;
+        --text: #e6e6e6;
+        --muted: #9aa3c7;
+      }
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; background: var(--bg); color: var(--text); height: 100vh; overflow: hidden; }
+      #app { display: flex; height: 100vh; }
+      .panel {
+        width: 320px;
+        background: var(--panel);
+        border-right: 1px solid var(--accent);
+        padding: 14px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        overflow: auto;
+      }
+      h1 { font-size: 16px; font-weight: 700; color: var(--cyan); }
+      h1 span { color: var(--gold); }
+      .sub { font-size: 11px; color: var(--muted); line-height: 1.5; }
+      .row { display: flex; gap: 8px; }
+      label { font-size: 11px; color: var(--muted); display: flex; justify-content: space-between; }
+      input, select {
+        width: 100%;
+        padding: 10px;
+        border: 1px solid var(--accent);
+        border-radius: 8px;
+        background: var(--bg);
+        color: var(--text);
+        font-family: inherit;
+        font-size: 12px;
+      }
+      input:focus, select:focus { outline: none; border-color: var(--cyan); }
+      button {
+        padding: 10px;
+        border: none;
+        border-radius: 8px;
+        background: var(--accent);
+        color: var(--text);
+        font-family: inherit;
+        font-size: 12px;
+        cursor: pointer;
+        transition: transform 0.08s ease;
+      }
+      button:hover { background: #36417a; }
+      button:active { transform: translateY(1px); }
+      .btn-primary { background: var(--cyan); color: #0f1220; font-weight: 800; }
+      .btn-primary:hover { background: #5ad4f0; }
+      .btn-gold { background: var(--gold); color: #0f1220; font-weight: 800; }
+      .btn-gold:hover { background: #ffbc60; }
+      .card { border: 1px solid rgba(114,230,255,0.18); background: rgba(114,230,255,0.06); border-radius: 10px; padding: 10px; }
+      .kv { font-size: 11px; color: var(--muted); line-height: 1.6; }
+      .kv b { color: var(--text); font-weight: 700; }
+      #view { flex: 1; position: relative; }
+      .hud {
+        position: absolute;
+        left: 14px;
+        bottom: 14px;
+        font-size: 11px;
+        color: var(--muted);
+        background: rgba(0,0,0,0.25);
+        border: 1px solid rgba(255,255,255,0.08);
+        padding: 10px 12px;
+        border-radius: 10px;
+        line-height: 1.6;
+        max-width: 60ch;
+      }
+      .hud b { color: var(--gold); }
+      a { color: var(--cyan); text-decoration: none; }
+      a:hover { text-decoration: underline; }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <div class="panel">
+        <div>
+          <h1>Dataset <span>Generator</span></h1>
+          <div class="sub">
+            批量随机生成 knot（CurveExtras + TubeGeometry + TorusKnot 曲线族），并导出可复现 JSON（seed + 参数 + 中心线点集 + 变形 + 指标）。
+            <br />
+            参考你提到的 CodeSandbox 机制：[`Parametric`/`TubeGeometry` 两条路](https://codesandbox.io/p/sandbox/threejs-es6-example-parametric-geometries-41wxd?file=%2Fsrc%2Findex.js%3A86%2C57)
+          </div>
+        </div>
+
+        <div class="card">
+          <label>Seed（可复现）<span>字符串</span></label>
+          <input id="seed" type="text" value="knot-dataset-v1" />
+          <div style="height: 8px"></div>
+          <div class="row">
+            <div style="flex: 1">
+              <label>数量 N<span>1–500</span></label>
+              <input id="count" type="text" value="64" />
+            </div>
+            <div style="flex: 1">
+              <label>网格列数<span>1–50</span></label>
+              <input id="cols" type="text" value="8" />
+            </div>
+          </div>
+          <div style="height: 8px"></div>
+          <label>Family 混合策略<span>离散标签</span></label>
+          <select id="family">
+            <option value="mix">mix（全部混合）</option>
+            <option value="benchmark">benchmark（分层难度）</option>
+            <option value="curveExtras">CurveExtras only</option>
+            <option value="torusKnot">TorusKnot T(p,q)</option>
+            <option value="torusKnot2q">Torus T(2,q) 系列</option>
+            <option value="twistKnot">Twist Knot 系列（Figure-8 扩展）</option>
+            <option value="spiralLoop">Spiral Loop（闭环螺旋）</option>
+            <option value="twistedRing">Twisted Ring（扭曲环）</option>
+            <option value="kinkyUnknot">Kinky Unknot（hard negative）</option>
+            <option value="lissajous">Lissajous Knot</option>
+            <option value="unknot">unknot（平凡环 / Circle）</option>
+          </select>
+        </div>
+
+        <!-- Benchmark Difficulty Settings -->
+        <div class="card" id="benchmarkBox" style="display:none">
+          <label style="color: var(--gold); font-weight: 600">Benchmark 难度分布</label>
+          <div style="height: 6px"></div>
+          <div class="row">
+            <div style="flex: 1">
+              <label>Easy %<span>Level 0</span></label>
+              <input id="easyPct" type="text" value="33" />
+            </div>
+            <div style="flex: 1">
+              <label>Medium %<span>Level 1</span></label>
+              <input id="mediumPct" type="text" value="34" />
+            </div>
+            <div style="flex: 1">
+              <label>Hard %<span>Level 2</span></label>
+              <input id="hardPct" type="text" value="33" />
+            </div>
+          </div>
+          <div class="sub" style="margin-top: 6px">
+            Easy: unknot/trefoil/figure-8, ≤4 crossings<br/>
+            Medium: T(2,5-7), twist n=2-3, 轻度遮挡<br/>
+            Hard: kinky unknot, ≥7 crossings, 强遮挡
+          </div>
+        </div>
+
+        <!-- Torus T(2,q) Settings -->
+        <div class="card" id="torus2qBox" style="display:none">
+          <label style="color: var(--cyan)">Torus T(2,q) 参数</label>
+          <div style="height: 6px"></div>
+          <div class="row">
+            <div style="flex: 1">
+              <label>q 范围 min<span>3,5,7...</span></label>
+              <input id="qMin" type="text" value="3" />
+            </div>
+            <div style="flex: 1">
+              <label>q 范围 max<span>3–15</span></label>
+              <input id="qMax" type="text" value="9" />
+            </div>
+          </div>
+          <div class="sub" style="margin-top: 6px">
+            T(2,3)=trefoil, T(2,5)=cinquefoil...<br/>
+            交叉数 = 2*(q-1)，难度随 q 增长
+          </div>
+        </div>
+
+        <!-- Twist Knot Settings -->
+        <div class="card" id="twistKnotBox" style="display:none">
+          <label style="color: var(--cyan)">Twist Knot 参数</label>
+          <div style="height: 6px"></div>
+          <div class="row">
+            <div style="flex: 1">
+              <label>半扭数 n min<span>1–8</span></label>
+              <input id="twistNMin" type="text" value="1" />
+            </div>
+            <div style="flex: 1">
+              <label>半扭数 n max<span>1–8</span></label>
+              <input id="twistNMax" type="text" value="5" />
+            </div>
+          </div>
+          <div class="sub" style="margin-top: 6px">
+            n=2 ≈ Figure-8 (4₁), n=3 → 5₂, n=4 → 6₁...<br/>
+            交叉数 ≈ n+2
+          </div>
+        </div>
+
+        <!-- Spiral Loop Settings -->
+        <div class="card" id="spiralLoopBox" style="display:none">
+          <label style="color: var(--cyan)">Spiral Loop 参数（闭环）</label>
+          <div style="height: 6px"></div>
+          <div class="row">
+            <div style="flex: 1">
+              <label>圈数 turns<span>1–8</span></label>
+              <input id="spiralTurns" type="text" value="3" />
+            </div>
+            <div style="flex: 1">
+              <label>层间距 pitch<span>0–0.5</span></label>
+              <input id="spiralPitch" type="text" value="0.12" />
+            </div>
+          </div>
+          <div style="height: 6px"></div>
+          <div class="row">
+            <div style="flex: 1">
+              <label>圈间距<span>0.1–0.5</span></label>
+              <input id="spiralGap" type="text" value="0.2" />
+            </div>
+            <div style="flex: 1">
+              <label>回接复杂度<span>0–2</span></label>
+              <select id="spiralConnector">
+                <option value="0">直连（易）</option>
+                <option value="1" selected>S 型（中）</option>
+                <option value="2">双 S（难）</option>
+              </select>
+            </div>
+          </div>
+          <div class="sub" style="margin-top: 6px">
+            几何复杂但拓扑简单 (unknot)，适合做 hard negative
+          </div>
+        </div>
+
+        <!-- Twisted Ring Settings -->
+        <div class="card" id="twistedRingBox" style="display:none">
+          <label style="color: var(--cyan)">Twisted Ring 参数</label>
+          <div style="height: 6px"></div>
+          <div class="row">
+            <div style="flex: 1">
+              <label>扭曲数<span>1–8</span></label>
+              <input id="ringTwists" type="text" value="3" />
+            </div>
+            <div style="flex: 1">
+              <label>振幅<span>0.05–0.4</span></label>
+              <input id="ringAmplitude" type="text" value="0.15" />
+            </div>
+          </div>
+          <div class="sub" style="margin-top: 6px">
+            本质是 unknot，但有视觉上的起伏变化
+          </div>
+        </div>
+
+        <!-- Kinky Unknot Settings -->
+        <div class="card" id="kinkyUnknotBox" style="display:none">
+          <label style="color: var(--gold)">Kinky Unknot 参数（最难 negative）</label>
+          <div style="height: 6px"></div>
+          <div class="row">
+            <div style="flex: 1">
+              <label>kink 数 k<span>1–8</span></label>
+              <input id="kinkCount" type="text" value="4" />
+            </div>
+            <div style="flex: 1">
+              <label>kink 振幅<span>0.1–0.5</span></label>
+              <input id="kinkAmplitude" type="text" value="0.25" />
+            </div>
+          </div>
+          <div class="row" style="margin-top: 6px">
+            <div style="flex: 1">
+              <label>kink 紧度<span>0.05–0.3</span></label>
+              <input id="kinkTightness" type="text" value="0.12" />
+            </div>
+          </div>
+          <div class="sub" style="margin-top: 6px">
+            投影交叉数很多，但拓扑仍是 unknot<br/>
+            逼 VLM 不能靠"看起来绕不绕"来判断
+          </div>
+        </div>
+
+        <!-- Lissajous Settings -->
+        <div class="card" id="lissajousBox" style="display:none">
+          <label style="color: var(--cyan)">Lissajous Knot 参数</label>
+          <div style="height: 6px"></div>
+          <div class="row">
+            <div style="flex: 1">
+              <label>nx<span>1–5</span></label>
+              <input id="lissNx" type="text" value="2" />
+            </div>
+            <div style="flex: 1">
+              <label>ny<span>1–7</span></label>
+              <input id="lissNy" type="text" value="3" />
+            </div>
+            <div style="flex: 1">
+              <label>nz<span>1–9</span></label>
+              <input id="lissNz" type="text" value="5" />
+            </div>
+          </div>
+          <div class="sub" style="margin-top: 6px">
+            Lissajous 曲线族，可生成多种 knot 类型
+          </div>
+        </div>
+
+        <div class="card">
+          <label>Tube 分辨率（影响面数）<span>粗略</span></label>
+          <select id="quality">
+            <option value="low">low（更快）</option>
+            <option value="mid" selected>mid</option>
+            <option value="high">high（更细）</option>
+          </select>
+          <div style="height: 8px"></div>
+          <label>绳子结构<span>open-ended 任务</span></label>
+          <select id="ropeMode">
+            <option value="single" selected>单结 / 单曲线（默认）</option>
+            <option value="multi">开链 + 多个结（拼接曲线段）</option>
+            <option value="multiRope">多根开链（multi-ropes）</option>
+          </select>
+          <div style="height: 8px"></div>
+          <div id="multiKnotBox" style="display:none">
+            <div class="row">
+              <div style="flex: 1">
+                <label>结数量 k<span>1–8</span></label>
+                <input id="knotCount" type="text" value="2" />
+              </div>
+              <div style="flex: 1">
+                <label>结间距<span>0–10</span></label>
+                <input id="knotSpacing" type="text" value="2.5" />
+              </div>
+            </div>
+            <div style="height: 8px"></div>
+            <div class="row">
+              <div style="flex: 1">
+                <label>结片段比例<span>0.2–1</span></label>
+                <input id="knotArcFrac" type="text" value="0.75" />
+              </div>
+              <div style="flex: 1">
+                <label>过渡长度<span>0–5</span></label>
+                <input id="transitionLen" type="text" value="0.7" />
+              </div>
+            </div>
+          </div>
+          <div id="multiRopeBox" style="display:none">
+            <div class="row">
+              <div style="flex: 1">
+                <label>rope 数<span>2–6</span></label>
+                <input id="numRopes" type="text" value="2" />
+              </div>
+              <div style="flex: 1">
+                <label>互缠对<span>0–1</span></label>
+                <select id="entangleMode">
+                  <option value="none" selected>none（全可分离）</option>
+                  <option value="onePair">one pair（制造一对不可分离）</option>
+                </select>
+              </div>
+            </div>
+            <div style="height: 8px"></div>
+            <div class="row">
+              <div style="flex: 1">
+                <label>每根“带结”概率<span>0–1</span></label>
+                <input id="ropeKnottedProb" type="text" value="0.5" />
+              </div>
+              <div style="flex: 1">
+                <label>最多局部结数<span>0–6</span></label>
+                <input id="maxLocalKnots" type="text" value="2" />
+              </div>
+            </div>
+          </div>
+          <div style="height: 8px"></div>
+          <label>拓扑 / 端点语义<span>评测分桶</span></label>
+          <select id="topology">
+            <option value="closed" selected>closed loop（闭环，默认）</option>
+            <option value="open">open-ended rope（开链：从中心线剪开）</option>
+            <option value="mix">mix（closed + open）</option>
+          </select>
+          <div style="height: 8px"></div>
+          <label>闭环组件（multi-loop）<span>仅 closed + 单曲线</span></label>
+          <select id="closedComponents">
+            <option value="single" selected>single loop（单环）</option>
+            <option value="unlinked">N loops：unlinked（可分离）</option>
+            <option value="hopf_pairs">N loops：Hopf linked pairs（回答 “which two link”）</option>
+          </select>
+          <div style="height: 8px"></div>
+          <div class="row">
+            <div style="flex: 1">
+              <label>loop 数 N<span>2–8</span></label>
+              <input id="numLoops" type="text" value="2" />
+            </div>
+            <div style="flex: 1">
+              <label>环间距<span>0–10</span></label>
+              <input id="loopSpacing" type="text" value="3.0" />
+            </div>
+          </div>
+          <div style="height: 8px"></div>
+          <label>open 比例（仅 mix 生效）<span>0–1</span></label>
+          <input id="openProb" type="text" value="0.5" />
+          <div style="height: 8px"></div>
+          <label>变形强度（沿法线扰动）<span>0–1</span></label>
+          <input id="deform" type="text" value="0.25" />
+          <div class="sub" style="margin-top: 6px">
+            提示：变形会提升“外观多样性”，但可能更容易产生穿模/自交。导出的 JSON 会包含一个近似指标（中心线最小非邻近距离），可后处理过滤。
+          </div>
+        </div>
+
+        <div class="row">
+          <button id="btnGenerate" class="btn-primary" style="flex: 1">生成 & 预览</button>
+          <button id="btnExport" class="btn-gold" style="flex: 1">导出 JSON</button>
+        </div>
+
+        <div class="card kv" id="status">
+          <div><b>状态</b>：待生成</div>
+          <div><b>Three</b>：-</div>
+          <div><b>样本</b>：-</div>
+          <div><b>CurveExtras</b>：-</div>
+        </div>
+
+        <div class="sub">
+          运行方式：`python3 -m http.server 5173`，浏览器打开 `http://localhost:5173/dataset_generator.html`
+        </div>
+      </div>
+      <div id="view">
+        <!-- <div class="hud">
+          鼠标拖拽旋转 · 滚轮缩放 · 右键平移<br />
+          导出 JSON 是“生成配方”（seed/参数/中心线/变形/指标），更适合论文数据流水线。<br />
+          如果你要导出 mesh（glTF/OBJ），我也可以在下一步加上（会让页面更重一些）。
+        </div> -->
+      </div>
+    </div>
+    <script type="module" src="./src/dataset-generator.js"></script>
+    <script>
+      // UI 同步逻辑
+      (function () {
+        const topology = document.getElementById('topology');
+        const openProb = document.getElementById('openProb');
+        const ropeMode = document.getElementById('ropeMode');
+        const multiKnotBox = document.getElementById('multiKnotBox');
+        const multiRopeBox = document.getElementById('multiRopeBox');
+        const closedComponents = document.getElementById('closedComponents');
+        const numLoops = document.getElementById('numLoops');
+        const loopSpacing = document.getElementById('loopSpacing');
+        const family = document.getElementById('family');
+        
+        // New family-specific boxes
+        const benchmarkBox = document.getElementById('benchmarkBox');
+        const torus2qBox = document.getElementById('torus2qBox');
+        const twistKnotBox = document.getElementById('twistKnotBox');
+        const spiralLoopBox = document.getElementById('spiralLoopBox');
+        const twistedRingBox = document.getElementById('twistedRingBox');
+        const kinkyUnknotBox = document.getElementById('kinkyUnknotBox');
+        const lissajousBox = document.getElementById('lissajousBox');
+        
+        const allFamilyBoxes = [benchmarkBox, torus2qBox, twistKnotBox, spiralLoopBox, twistedRingBox, kinkyUnknotBox, lissajousBox];
+        
+        const sync = () => {
+          const mode = ropeMode ? ropeMode.value : 'single';
+          const isMulti = mode === 'multi';
+          const isMultiRope = mode === 'multiRope';
+          const isMix = topology && topology.value === 'mix';
+          const familyVal = family ? family.value : 'mix';
+          
+          if (openProb) {
+            openProb.disabled = !isMix;
+            openProb.style.opacity = isMix ? '1' : '0.55';
+          }
+          if (multiKnotBox) multiKnotBox.style.display = isMulti ? 'block' : 'none';
+          if (multiRopeBox) multiRopeBox.style.display = isMultiRope ? 'block' : 'none';
+          
+          // 多结模式一定是 open-ended rope
+          if (topology) {
+            topology.disabled = isMulti || isMultiRope;
+            topology.style.opacity = isMulti || isMultiRope ? '0.55' : '1';
+            if (isMulti || isMultiRope) topology.value = 'open';
+          }
+
+          // multi-loop 只在 closed + 单曲线下可用
+          const topoVal = topology ? topology.value : 'closed';
+          const allowClosedComponents = !isMulti && !isMultiRope && topoVal === 'closed';
+          if (closedComponents) {
+            closedComponents.disabled = !allowClosedComponents;
+            closedComponents.style.opacity = allowClosedComponents ? '1' : '0.55';
+            if (!allowClosedComponents) closedComponents.value = 'single';
+          }
+          const isMultiLoop = closedComponents && closedComponents.value !== 'single';
+          if (isMultiLoop && topology && topology.value !== 'closed') topology.value = 'closed';
+          if (numLoops) {
+            numLoops.disabled = !allowClosedComponents || !isMultiLoop;
+            numLoops.style.opacity = !allowClosedComponents || !isMultiLoop ? '0.55' : '1';
+          }
+          if (loopSpacing) {
+            loopSpacing.disabled = !allowClosedComponents || !isMultiLoop;
+            loopSpacing.style.opacity = !allowClosedComponents || !isMultiLoop ? '0.55' : '1';
+          }
+          
+          // Hide all family-specific boxes first
+          allFamilyBoxes.forEach(box => {
+            if (box) box.style.display = 'none';
+          });
+          
+          // Show relevant box based on family selection
+          switch (familyVal) {
+            case 'benchmark':
+              if (benchmarkBox) benchmarkBox.style.display = 'block';
+              break;
+            case 'torusKnot2q':
+              if (torus2qBox) torus2qBox.style.display = 'block';
+              break;
+            case 'twistKnot':
+              if (twistKnotBox) twistKnotBox.style.display = 'block';
+              break;
+            case 'spiralLoop':
+              if (spiralLoopBox) spiralLoopBox.style.display = 'block';
+              break;
+            case 'twistedRing':
+              if (twistedRingBox) twistedRingBox.style.display = 'block';
+              break;
+            case 'kinkyUnknot':
+              if (kinkyUnknotBox) kinkyUnknotBox.style.display = 'block';
+              break;
+            case 'lissajous':
+              if (lissajousBox) lissajousBox.style.display = 'block';
+              break;
+          }
+        };
+        
+        if (topology) topology.addEventListener('change', sync);
+        if (ropeMode) ropeMode.addEventListener('change', sync);
+        if (closedComponents) closedComponents.addEventListener('change', sync);
+        if (family) family.addEventListener('change', sync);
+        sync();
+      })();
+    </script>
+  </body>
+</html>
+
+

@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>H5 Knot - 3D 绳结物理模拟</title>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+        }
+      }
+    </script>
+    <style>
+    :root {
+      --bg: #0f1220;
+      --panel: #151a2e;
+      --accent: #2a335a;
+      --cyan: #72e6ff;
+      --gold: #ffd08a;
+      --text: #e6e6e6;
+      --muted: #9aa3c7;
+    }
+    
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    
+      body {
+      font-family: 'JetBrains Mono', 'SF Mono', 'Consolas', monospace;
+      background: var(--bg);
+      color: var(--text);
+      overflow: hidden;
+      }
+    
+    #app { display: flex; height: 100vh; }
+    
+      .panel {
+      width: 220px;
+      background: var(--panel);
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      border-right: 1px solid var(--accent);
+      overflow-y: auto;
+      }
+    
+    h1 {
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--cyan);
+      }
+    h1 span { color: var(--gold); }
+    
+    .subtitle {
+      font-size: 11px;
+      color: var(--muted);
+      line-height: 1.4;
+      }
+    
+    .section {
+      display: flex;
+      flex-direction: column;
+        gap: 8px;
+    }
+    
+    .section-title {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--muted);
+      }
+    
+    select {
+      padding: 10px;
+      border: 1px solid var(--accent);
+      border-radius: 6px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: inherit;
+      font-size: 13px;
+        cursor: pointer;
+      }
+    select:focus { outline: none; border-color: var(--cyan); }
+    
+    input[type="text"] {
+      padding: 10px;
+      border: 1px solid var(--accent);
+      border-radius: 6px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: inherit;
+      font-size: 12px;
+      width: 100%;
+    }
+    input[type="text"]:focus { outline: none; border-color: var(--cyan); }
+    
+    .btnrow { display: flex; gap: 8px; }
+    
+    button {
+      flex: 1;
+      padding: 10px 8px;
+      border: none;
+      border-radius: 6px;
+      font-family: inherit;
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.2s;
+      }
+    
+    .btn-primary { background: var(--cyan); color: var(--bg); font-weight: 600; }
+    .btn-primary:hover { background: #5ad4f0; }
+    .btn-secondary { background: var(--accent); color: var(--text); }
+    .btn-secondary:hover { background: #1a4a7a; }
+    .btn-gold { background: var(--gold); color: var(--bg); font-weight: 600; }
+    .btn-gold:hover { background: #ffbc60; }
+    .btn-small { padding: 6px 8px; font-size: 11px; }
+    
+    .params { display: flex; flex-direction: column; gap: 10px; }
+    
+    .param { display: flex; flex-direction: column; gap: 4px; }
+    .param label {
+      font-size: 11px;
+      color: var(--muted);
+      display: flex;
+      justify-content: space-between;
+      }
+    .param label span { color: var(--cyan); }
+    
+      input[type="range"] {
+        width: 100%;
+      height: 4px;
+      border-radius: 2px;
+      background: var(--accent);
+      appearance: none;
+      cursor: pointer;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      appearance: none;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: var(--cyan);
+    }
+    
+    .stats { display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
+    .stats div { display: flex; justify-content: space-between; }
+    .stats .val { color: var(--cyan); }
+    
+    #fps { color: var(--gold); font-size: 11px; }
+    
+    #view { flex: 1; position: relative; }
+    
+    .status {
+      position: absolute;
+      bottom: 16px;
+      left: 16px;
+        font-size: 11px;
+      color: var(--muted);
+    }
+    .status-running { color: var(--cyan); }
+    .status-tightening { color: var(--gold); }
+    
+    .help {
+      position: absolute;
+      bottom: 16px;
+      right: 16px;
+      font-size: 10px;
+      color: var(--muted);
+      text-align: right;
+        line-height: 1.5;
+    }
+    
+    .legend {
+      font-size: 10px;
+      color: var(--muted);
+      line-height: 1.5;
+      padding: 8px;
+      background: rgba(0,0,0,0.2);
+      border-radius: 4px;
+    }
+    .legend-item { display: flex; align-items: center; gap: 6px; }
+    .legend-dot { width: 10px; height: 10px; border-radius: 50%; }
+    
+    .info-box {
+      font-size: 10px;
+      color: var(--gold);
+      padding: 8px;
+      background: rgba(255, 208, 138, 0.1);
+      border: 1px solid rgba(255, 208, 138, 0.3);
+      border-radius: 4px;
+      line-height: 1.4;
+      }
+    
+    .btn-random {
+      width: 100%;
+      padding: 14px;
+      background: linear-gradient(135deg, #ff6b6b 0%, #ffd93d 50%, #6bcb77 100%);
+      color: #1a1a2e;
+      font-weight: 700;
+      font-size: 14px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.3s;
+      text-shadow: 0 1px 0 rgba(255,255,255,0.3);
+      box-shadow: 0 2px 8px rgba(255, 107, 107, 0.3);
+    }
+    .btn-random:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 16px rgba(255, 107, 107, 0.4);
+    }
+    .btn-random:active {
+      transform: translateY(0);
+    }
+    
+    .equation-box {
+      padding: 12px;
+      background: rgba(114, 230, 255, 0.08);
+      border: 1px solid rgba(114, 230, 255, 0.25);
+      border-radius: 6px;
+      font-family: 'Courier New', 'JetBrains Mono', monospace;
+    }
+    .eq-name {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--cyan);
+      margin-bottom: 8px;
+      text-align: center;
+    }
+    .eq-section {
+      margin: 6px 0;
+    }
+    .eq-formula {
+      font-size: 10px;
+      color: var(--text);
+      line-height: 1.7;
+      padding-left: 4px;
+    }
+    .eq-params {
+      font-size: 11px;
+      color: var(--gold);
+      margin-top: 8px;
+      text-align: center;
+      font-weight: 600;
+    }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <div class="panel">
+      <div>
+        <h1>H5 <span>Knot</span></h1>
+        <p class="subtitle">3D Rope Physics Simulation<br>Procedural Generation + PBD</p>
+      </div>
+      
+      <div class="section">
+        <div class="section-title">Knot Type</div>
+        <select id="knotType">
+          <option value="figure8">Figure-8 Knot</option>
+          <option value="trefoil">Trefoil Knot</option>
+          <option value="reef">Reef Knot (2 ropes)</option>
+          <option value="overhand">Overhand Knot</option>
+          <option value="random">🎲 Random Knot</option>
+          <option value="randomLissajous">🎲 Random Lissajous</option>
+          <option value="randomTorus">🎲 Random Torus</option>
+          <option value="randomDeformedTorus">🎲 Random Deformed Torus (open)</option>
+          <option value="gauss">Gauss Code</option>
+        </select>
+        <button id="btnRandom" class="btn-random">🎲 生成随机绳结</button>
+      </div>
+      
+      <div class="section" id="gaussCodeSection" style="display: none;">
+        <div class="section-title">Gauss Code</div>
+        <input id="gaussCodeInput" type="text" placeholder="1o 2u 3o 1u 2o 3u">
+        <div class="btnrow">
+          <button id="btnLoadGauss" class="btn-primary btn-small">Load</button>
+          <button id="btnGaussExamples" class="btn-secondary btn-small">Examples</button>
+        </div>
+      </div>
+      
+      <div id="equationDisplay" class="equation-box">
+        <div class="eq-name">Figure-8 Knot</div>
+        <div class="eq-formula" style="color: #888;">手工定义的绳结拓扑</div>
+      </div>
+      
+      <div class="info-box">
+        ✨ 使用参数方程生成绳结<br>
+        支持 Lissajous 和 Torus 结
+        </div>
+
+      <div class="section">
+        <div class="btnrow">
+          <button id="btnReset" class="btn-secondary">Reset</button>
+          <button id="btnSimulate" class="btn-primary">Simulate</button>
+        </div>
+        <button id="btnTighten" class="btn-gold">Tighten</button>
+        <div class="btnrow">
+          <button id="btnDebug" class="btn-secondary btn-small">Hide Grid</button>
+          <button id="btnExport" class="btn-gold btn-small">导出 JSON</button>
+        </div>
+        </div>
+
+      <div class="section">
+        <div class="section-title">Physics Parameters</div>
+        <div class="params">
+          <div class="param">
+            <label>Substeps <span id="substepsVal">16</span></label>
+            <input type="range" id="substeps" min="4" max="24" value="16">
+          </div>
+          <div class="param">
+            <label>Iterations <span id="itersVal">25</span></label>
+            <input type="range" id="iters" min="10" max="50" value="25">
+          </div>
+          <div class="param">
+            <label>Bend Stiffness <span id="bendVal">0.5</span></label>
+            <input type="range" id="bend" min="10" max="90" value="50">
+          </div>
+          <div class="param">
+            <label>Tighten Strength <span id="tightVal">0.5</span></label>
+            <input type="range" id="tight" min="10" max="100" value="50">
+          </div>
+        </div>
+        </div>
+
+      <div class="section">
+        <div class="section-title">Legend</div>
+        <div class="legend">
+          <div class="legend-item">
+            <div class="legend-dot" style="background: #ff00ff"></div>
+            <span>Crossing point</span>
+          </div>
+          <div class="legend-item">
+            <div class="legend-dot" style="background: #ffff00"></div>
+            <span>Endpoints (pinned)</span>
+          </div>
+          <div class="legend-item">
+            <div class="legend-dot" style="background: #72e6ff"></div>
+            <span>Rope 1</span>
+          </div>
+          <div class="legend-item">
+            <div class="legend-dot" style="background: #ffd08a"></div>
+            <span>Rope 2</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="section" id="stats" style="margin-top: auto;">
+        <div>Leads: <span class="val">-</span></div>
+        <div>Crossings: <span class="val">-</span></div>
+        <div>Particles: <span class="val">-</span></div>
+      </div>
+      
+      <div id="fps">FPS: --</div>
+    </div>
+
+    <div id="view">
+      <div class="status">
+        ● Physics: <span id="physicsStatus">Paused</span>
+      </div>
+      <div class="help">
+        Drag to rotate · Scroll to zoom<br>
+        Click Tighten to pull the knot tight
+      </div>
+    </div>
+  </div>
+  
+  <script>
+    document.querySelectorAll('input[type="range"]').forEach(slider => {
+      slider.addEventListener('input', () => {
+        const id = slider.id;
+        const val = slider.value;
+        const valEl = document.getElementById(id + 'Val');
+        if (valEl) {
+          if (id === 'bend' || id === 'tight') {
+            valEl.textContent = (val / 100).toFixed(1);
+          } else {
+            valEl.textContent = val;
+          }
+        }
+      });
+    });
+  </script>
+  
+  <script type="module" src="./src/app.js"></script>
+  </body>
+</html>
