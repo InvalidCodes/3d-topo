@@ -3,8 +3,7 @@
  *
  * Provides consistent difficulty scoring across:
  * 1) Single closed-loop knot images
- * 2) Single open-loop knot images
- * 3) Pair images (invariance dataset)
+ * 2) Pair images (invariance dataset)
  *
  * Output convention:
  * - difficulty_score: number in [0,1]
@@ -100,68 +99,6 @@ export function computeSingleClosedLoopDifficulty(params) {
       view: viewScore,
       occlusion: occlusionScore,
       deceptive: deceptiveScore,
-    },
-  };
-}
-
-// ============= Single Open-Loop =============
-
-export function computeSingleOpenLoopDifficulty(params) {
-  const {
-    knotType,
-    tightness = 0.6,
-    knotCount = 1,
-    hasKnot = true,
-  } = params || {};
-
-  const weights = {
-    looseness: 0.35,
-    typeComplexity: 0.25,
-    knotCount: 0.15,
-    deceptiveNoKnot: 0.25,
-  };
-
-  // extensible mapping; unknown types fallback to 0.5
-  const typeComplexityMap = {
-    straight: 0.0,
-    loose_coil: 0.3,
-    overhand: 0.4,
-    figure8: 0.6,
-    bowline: 0.7,
-    double_overhand: 0.8,
-    slip_knot: 0.65,
-    square_knot: 0.85,
-    fishermans: 0.9,
-    clove_hitch: 0.6,
-    stevedore: 0.75,
-    constrictor: 0.8,
-  };
-
-  const t = clamp(Number(tightness), 0, 1);
-  const loosenessScore = clamp(1 - t, 0, 1);
-  const typeScore = typeComplexityMap[knotType] ?? 0.5;
-  const count = Math.max(0, Math.floor(Number.isFinite(knotCount) ? knotCount : 0));
-  const countScore = clamp((count - 1) / 2, 0, 1);
-
-  // "no-knot but looks like knot": loose coil + slack is especially deceptive
-  const deceptiveNoKnotScore =
-    (!hasKnot && knotType === 'loose_coil' && t < 0.4) ? 1.0 :
-    (!hasKnot && knotType === 'loose_coil') ? 0.6 : 0.0;
-
-  const score =
-    weights.looseness * loosenessScore +
-    weights.typeComplexity * typeScore +
-    weights.knotCount * countScore +
-    weights.deceptiveNoKnot * deceptiveNoKnotScore;
-
-  return {
-    difficulty_score: clamp(score, 0, 1),
-    difficulty: scoreToLevel(score),
-    factors: {
-      looseness: loosenessScore,
-      typeComplexity: typeScore,
-      knotCount: countScore,
-      deceptiveNoKnot: deceptiveNoKnotScore,
     },
   };
 }

@@ -261,19 +261,6 @@
               <option value="trefoil" selected>∞ Trefoil（三叶结）</option>
               <option value="figure8">8 Figure-8（8字结）</option>
             </optgroup>
-            <optgroup label="═══ Open Loop Knots ═══">
-              <option value="open_straight">🧵 Straight Rope (no knot)</option>
-              <option value="open_overhand">🪢 Overhand Knot</option>
-              <option value="open_figure8">🎱 Figure-8 Knot</option>
-              <option value="open_double">🔗 Double Overhand</option>
-              <option value="open_bowline">🧠 Bowline</option>
-              <option value="open_loose_loop">⭕ Deceptive Loop (no knot)</option>
-            </optgroup>
-            <optgroup label="═══ Open Loop Multi-Knots ═══">
-              <option value="open_multi_two_overhands">🪢🪢 Two Overhands</option>
-              <option value="open_multi_mixed">🪢🎱 Overhand + Figure-8</option>
-              <option value="open_multi_triple">🪢🎱🪢 Three Knots</option>
-            </optgroup>
             <optgroup label="═══ Torus Knots T(p,q) ═══">
               <option value="torus_2_5">T(2,5) Cinquefoil — 5 crossings</option>
               <option value="torus_2_7">T(2,7) Septafoil — 7 crossings</option>
@@ -341,10 +328,6 @@
             </div>
             <div style="height: 8px"></div>
             <div class="row">
-              <div style="flex: 1">
-                <label>线粗<span>0.02–0.6</span></label>
-                <input id="radius" type="text" value="0.24" />
-              </div>
               <div style="flex: 1">
                 <label>整体缩放<span>0.3–3</span></label>
                 <input id="scale" type="text" value="1.0" />
@@ -483,42 +466,13 @@
           </div>
         </div>
 
-        <!-- === Open Loop 参数（开绳） === -->
-        <div class="card card-gold" id="openLoopBox" style="display: none;">
-          <div class="section-title" style="color: var(--gold)">🧵 Open Loop 参数（开绳松紧度）</div>
-          <div class="row">
-            <div style="flex: 1">
-              <label>Tightness: <span id="openTightnessVal" style="color: var(--cyan);">0.60</span></label>
-              <input id="openTightness" type="range" min="0" max="1" step="0.01" value="0.6" />
-            </div>
-          </div>
-          <div class="sub" style="margin-top: 6px;">
-            <b>0</b> 更松散（环更大、间隙更大） / <b>1</b> 更紧（更紧凑）
-          </div>
-        </div>
-
         <!-- === Dataset 模式专用设置 === -->
         <div class="card" id="datasetBox" style="display: none;">
           <div class="section-title">Dataset 生成设置</div>
           <div class="row">
             <div style="flex: 1">
-              <label>拓扑类型<span>端点</span></label>
-              <select id="topology">
-                <option value="closed" selected>Closed Loop（闭环）</option>
-                <option value="open">Open-ended（开链）</option>
-                <option value="mix">Mix（混合）</option>
-              </select>
-            </div>
-          </div>
-          <div style="height: 8px"></div>
-          <div class="row">
-            <div style="flex: 1">
               <label>变形强度<span>0–1</span></label>
               <input id="deform" type="text" value="0.25" />
-            </div>
-            <div style="flex: 1">
-              <label>Open 比例<span>仅 mix</span></label>
-              <input id="openProb" type="text" value="0.5" />
             </div>
           </div>
         </div>
@@ -556,7 +510,6 @@
         const borromeanDebugBox = document.getElementById('borromeanDebugBox');
         const kinkyBox = document.getElementById('kinkyBox');
         const spiralLoopBox = document.getElementById('spiralLoopBox');
-        const openLoopBox = document.getElementById('openLoopBox');
         const datasetBox = document.getElementById('datasetBox');
         const btnExport = document.getElementById('btnExport');
         const tabs = document.querySelectorAll('.tab');
@@ -599,7 +552,6 @@
           ['spiralTurns', 'spiralTurnsVal', 0],
           ['spiralPitch', 'spiralPitchVal', 2],
           ['spiralGap', 'spiralGapVal', 2],
-          ['openTightness', 'openTightnessVal', 2],
         ];
         
         sliders.forEach(([sliderId, valId, decimals]) => {
@@ -628,16 +580,11 @@
           const isBorromean = presetVal === 'borromean';
           const isKinky = presetVal === 'kinky_unknot';
           const isSpiralLoop = presetVal === 'spiral_disk';
-          const isOpenLoop = presetVal.startsWith('open_');
-          
           if (benchmarkBox) benchmarkBox.style.display = isBenchmark ? 'block' : 'none';
           if (chainDebugBox) chainDebugBox.style.display = isChain ? 'block' : 'none';
           if (borromeanDebugBox) borromeanDebugBox.style.display = isBorromean ? 'block' : 'none';
           if (kinkyBox) kinkyBox.style.display = isKinky ? 'block' : 'none';
           if (spiralLoopBox) spiralLoopBox.style.display = isSpiralLoop ? 'block' : 'none';
-          // tightness 仅对单结 openLoop 生效；multi-knot 用固定 config 内 tightness
-          const isOpenLoopMulti = presetVal.startsWith('open_multi_');
-          if (openLoopBox) openLoopBox.style.display = (isOpenLoop && !isOpenLoopMulti) ? 'block' : 'none';
         }
         
         if (preset) preset.addEventListener('change', syncUI);

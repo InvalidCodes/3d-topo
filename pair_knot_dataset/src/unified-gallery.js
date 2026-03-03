@@ -9,11 +9,12 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import * as CurveExtras from 'three/addons/curves/CurveExtras.js';
 import { computeGaussCodeBestProjection } from './gauss-code-generator.js';
-import { generateOpenKnot } from './open-loop-generator.js';
-import { generateMultiKnotPath } from './open-loop-multi-knot.js';
-import { computeSingleClosedLoopDifficulty, computeSingleOpenLoopDifficulty } from './difficulty-controller.js';
+import { computeSingleClosedLoopDifficulty } from './difficulty-controller.js';
+import { createRopeMesh, checkSelfIntersection } from './rope-renderer-unified.js';
 
 const Curves = CurveExtras.Curves || CurveExtras;
+const FIXED_ROPE_RADIUS = 0.02; // 固定细绳子
+const FIXED_ROPE_COLOR = '#ffffff';
 
 // ============= Seeded RNG =============
 function xmur3(str) {
@@ -284,17 +285,6 @@ const PRESETS = {
   trefoil: { name: 'Trefoil', kind: 'torus', p: 2, q: 3, R: 1.0, r: 0.4, difficulty: 'easy', crossings: 3 },
   figure8: { name: 'Figure-8', kind: 'curveExtras', extrasName: 'FigureEightPolynomialKnot', fallback: () => new TorusKnotCurve({ p: 3, q: 4, R: 1.0, r: 0.35 }), difficulty: 'easy', crossings: 4 },
   
-  // Open Loop (open-ended rope)
-  open_straight: { name: 'Open Straight Rope', kind: 'openLoop', openType: 'straight', difficulty: 'easy', crossings: 0, isOpen: true },
-  open_overhand: { name: 'Open Overhand Knot', kind: 'openLoop', openType: 'overhand', difficulty: 'easy', crossings: 1, isOpen: true },
-  open_figure8: { name: 'Open Figure-8 Knot', kind: 'openLoop', openType: 'figure8', difficulty: 'medium', crossings: 2, isOpen: true },
-  open_double: { name: 'Open Double Overhand', kind: 'openLoop', openType: 'double_overhand', difficulty: 'hard', crossings: 3, isOpen: true },
-  open_loose_loop: { name: 'Open Deceptive Loop', kind: 'openLoop', openType: 'loose_coil', difficulty: 'hard', crossings: 0, isOpen: true, isDeceptive: true },
-  open_bowline: { name: 'Open Bowline', kind: 'openLoop', openType: 'bowline', difficulty: 'medium', crossings: 3, isOpen: true },
-  open_multi_two_overhands: { name: 'Multi: Two Overhands', kind: 'openLoopMulti', configName: 'double_overhand_real', difficulty: 'hard', crossings: 2, isOpen: true },
-  open_multi_mixed: { name: 'Multi: Overhand + Figure-8', kind: 'openLoopMulti', configName: 'mixed_knots', difficulty: 'hard', crossings: 3, isOpen: true },
-  open_multi_triple: { name: 'Multi: Three Knots', kind: 'openLoopMulti', configName: 'triple_knots', difficulty: 'hard', crossings: 4, isOpen: true },
-  
   // Torus Knots - with slimmer r values
   torus_2_5: { name: 'T(2,5) Cinquefoil', kind: 'torus', p: 2, q: 5, R: 1.0, r: 0.38, difficulty: 'medium', crossings: 5 },
   torus_2_7: { name: 'T(2,7) Septafoil', kind: 'torus', p: 2, q: 7, R: 1.0, r: 0.35, difficulty: 'hard', crossings: 7 },
@@ -326,7 +316,14 @@ const PRESETS = {
 
 // ============= Geometry Builders =============
 
-function tubeQualityParams(q) {
+function tubeQualityParams(q, overrides = null) {
+  if (overrides && (Number.isFinite(overrides.tubularSegments) || Number.isFinite(overrides.radialSegments))) {
+    const base = tubeQualityParams(q, null);
+    return {
+      tubularSegments: Number.isFinite(overrides.tubularSegments) ? Math.floor(overrides.tubularSegments) : base.tubularSegments,
+      radialSegments: Number.isFinite(overrides.radialSegments) ? Math.floor(overrides.radialSegments) : base.radialSegments,
+    };
+  }
   if (q === 'high') return { tubularSegments: 280, radialSegments: 18 };
   if (q === 'mid') return { tubularSegments: 200, radialSegments: 14 };
   return { tubularSegments: 120, radialSegments: 10 };
@@ -364,15 +361,31 @@ function mergeBufferGeometries(geoms) {
   return out;
 }
 
-function estimateAndNormalizeTube({ makeCurve, closed = true, quality = 'mid', radius = 0.24, targetOuterRadius = 1.25 }) {
-  const { tubularSegments, radialSegments } = tubeQualityParams(quality);
+function estimateAndNormalizeTube({ makeCurve, closed = true, quality = 'mid', radius = 0.24, targetOuterRadius = 1.25, segments = null }) {
+  const { tubularSegments, radialSegments } = tubeQualityParams(quality, segments);
   const curve = makeCurve();
-  const thin = new THREE.TubeGeometry(curve, tubularSegments, 0.01, radialSegments, closed);
-  thin.computeBoundingSphere();
-  const sNorm = thin.boundingSphere?.radius > 1e-6 ? (targetOuterRadius / thin.boundingSphere.radius) : 1.0;
-  thin.dispose();
+
+  const check = checkSelfIntersection(curve, 0.05);
+  if (check.hasIntersection) {
+    // eslint-disable-next-line no-console
+    console.warn(`Self-intersection detected! minDist=${check.minDist}`);
+    // 可选：自动缩放曲线或重新生成
+  }
+
+  // Estimate scale using centerline points (avoid creating TubeGeometry here).
+  const pts = curve.getPoints(Math.max(64, Math.floor(tubularSegments)));
+  const sphere = new THREE.Sphere();
+  new THREE.Box3().setFromPoints(pts).getBoundingSphere(sphere);
+  const sNorm = sphere.radius > 1e-6 ? (targetOuterRadius / sphere.radius) : 1.0;
+
+  // Keep world-space rope radius == `radius` after scaling.
   const baseRadius = radius / sNorm;
-  const geom = new THREE.TubeGeometry(curve, tubularSegments, baseRadius, radialSegments, closed);
+
+  const ropeColor = FIXED_ROPE_COLOR;
+  const mesh = createRopeMesh(curve, { radius: baseRadius, color: ropeColor, closed, tubularSegments, radialSegments });
+  const geom = mesh.geometry;
+  if (mesh.material) mesh.material.dispose();
+
   geom.scale(sNorm, sNorm, sNorm);
   geom.computeVertexNormals();
   geom.center();
@@ -381,8 +394,8 @@ function estimateAndNormalizeTube({ makeCurve, closed = true, quality = 'mid', r
 }
 
 // Build Hopf Link (两环相扣)
-function buildRealHopfLinkGeometry({ rng, quality = 'mid', radius = 0.24 } = {}) {
-  const { tubularSegments, radialSegments } = tubeQualityParams(quality);
+function buildRealHopfLinkGeometry({ rng, quality = 'mid', radius = 0.24, segments = null } = {}) {
+  const { tubularSegments, radialSegments } = tubeQualityParams(quality, segments);
   const ampA = rng ? 0.04 + rng() * 0.08 : 0.06;
   const ampB = rng ? 0.04 + rng() * 0.08 : 0.06;
   const wavesA = rng ? 2 + Math.floor(rng() * 4) : 3;
@@ -391,13 +404,35 @@ function buildRealHopfLinkGeometry({ rng, quality = 'mid', radius = 0.24 } = {})
   const phaseB = rng ? rng() * Math.PI * 2 : 0;
 
   const R = 1.5;
-  const tubeRadius = radius * 0.9;
+  const tubeRadius = FIXED_ROPE_RADIUS;
 
   const curveA = new PlanarWobbleCircleCurve({ radius: R, center: new THREE.Vector3(0, 0, 0), normal: new THREE.Vector3(0, 0, 1), waves: wavesA, amp: ampA, phase: phaseA });
   const curveB = new PlanarWobbleCircleCurve({ radius: R, center: new THREE.Vector3(0, -2, 0), normal: new THREE.Vector3(1, 0, 0), waves: wavesB, amp: ampB, phase: phaseB });
 
-  const a = new THREE.TubeGeometry(curveA, tubularSegments, tubeRadius, radialSegments, true);
-  const b = new THREE.TubeGeometry(curveB, tubularSegments, tubeRadius, radialSegments, true);
+  const ropeColor = FIXED_ROPE_COLOR;
+  {
+    const check = checkSelfIntersection(curveA, 0.05);
+    if (check.hasIntersection) {
+      // eslint-disable-next-line no-console
+      console.warn(`Self-intersection detected! minDist=${check.minDist}`);
+      // 可选：自动缩放曲线或重新生成
+    }
+  }
+  {
+    const check = checkSelfIntersection(curveB, 0.05);
+    if (check.hasIntersection) {
+      // eslint-disable-next-line no-console
+      console.warn(`Self-intersection detected! minDist=${check.minDist}`);
+      // 可选：自动缩放曲线或重新生成
+    }
+  }
+
+  const aMesh = createRopeMesh(curveA, { radius: tubeRadius, color: ropeColor, closed: true, tubularSegments, radialSegments });
+  const bMesh = createRopeMesh(curveB, { radius: tubeRadius, color: ropeColor, closed: true, tubularSegments, radialSegments });
+  const a = aMesh.geometry;
+  const b = bMesh.geometry;
+  if (aMesh.material) aMesh.material.dispose();
+  if (bMesh.material) bMesh.material.dispose();
 
   // Colors
   const colorsA = new Float32Array(a.attributes.position.count * 3);
@@ -419,8 +454,8 @@ function buildRealHopfLinkGeometry({ rng, quality = 'mid', radius = 0.24 } = {})
 }
 
 // Build Unlinked Rings
-function buildUnlinkedRingsGeometry({ rng, quality = 'mid', radius = 0.24 } = {}) {
-  const { tubularSegments, radialSegments } = tubeQualityParams(quality);
+function buildUnlinkedRingsGeometry({ rng, quality = 'mid', radius = 0.24, segments = null } = {}) {
+  const { tubularSegments, radialSegments } = tubeQualityParams(quality, segments);
   const ampA = rng ? 0.08 + rng() * 0.1 : 0.1;
   const ampB = rng ? 0.08 + rng() * 0.1 : 0.1;
   const R = 1.0;
@@ -429,9 +464,31 @@ function buildUnlinkedRingsGeometry({ rng, quality = 'mid', radius = 0.24 } = {}
   const offsetX = rng ? 2.2 + rng() * 0.5 : 2.5;
   const curveB = new PlanarWobbleCircleCurve({ radius: R, center: new THREE.Vector3(offsetX, 0, 0), normal: new THREE.Vector3(0, 0, 1), waves: 3, amp: ampB });
 
-  const tubeRadius = radius * 0.8;
-  const a = new THREE.TubeGeometry(curveA, tubularSegments, tubeRadius, radialSegments, true);
-  const b = new THREE.TubeGeometry(curveB, tubularSegments, tubeRadius, radialSegments, true);
+  const tubeRadius = FIXED_ROPE_RADIUS;
+  const ropeColor = FIXED_ROPE_COLOR;
+  {
+    const check = checkSelfIntersection(curveA, 0.05);
+    if (check.hasIntersection) {
+      // eslint-disable-next-line no-console
+      console.warn(`Self-intersection detected! minDist=${check.minDist}`);
+      // 可选：自动缩放曲线或重新生成
+    }
+  }
+  {
+    const check = checkSelfIntersection(curveB, 0.05);
+    if (check.hasIntersection) {
+      // eslint-disable-next-line no-console
+      console.warn(`Self-intersection detected! minDist=${check.minDist}`);
+      // 可选：自动缩放曲线或重新生成
+    }
+  }
+
+  const aMesh = createRopeMesh(curveA, { radius: tubeRadius, color: ropeColor, closed: true, tubularSegments, radialSegments });
+  const bMesh = createRopeMesh(curveB, { radius: tubeRadius, color: ropeColor, closed: true, tubularSegments, radialSegments });
+  const a = aMesh.geometry;
+  const b = bMesh.geometry;
+  if (aMesh.material) aMesh.material.dispose();
+  if (bMesh.material) bMesh.material.dispose();
 
   const colorsA = new Float32Array(a.attributes.position.count * 3);
   for (let i = 0; i < a.attributes.position.count; i++) { colorsA[i*3] = 1.0; colorsA[i*3+1] = 0.95; colorsA[i*3+2] = 0.95; }
@@ -693,8 +750,8 @@ function generateDiverseChainLayout({
   return { centers, normals };
 }
 
-function buildChainGeometry({ rng, quality = 'mid', radius = 0.24 } = {}) {
-  const { tubularSegments, radialSegments } = tubeQualityParams(quality);
+function buildChainGeometry({ rng, quality = 'mid', radius = 0.24, segments = null } = {}) {
+  const { tubularSegments, radialSegments } = tubeQualityParams(quality, segments);
   
   const parseVal = (id, fallback) => {
     const el = document.getElementById(id);
@@ -715,7 +772,7 @@ function buildChainGeometry({ rng, quality = 'mid', radius = 0.24 } = {}) {
   const chainStep = parseVal('chainSpacing', 0) * R;
   const effectiveStep = Math.abs(chainStep) < 0.01 ? Math.abs(linkOffsetY) : chainStep;
 
-  const tubeRadius = radius * 0.9;
+  const tubeRadius = FIXED_ROPE_RADIUS;
   const geoms = [];
 
   const { centers, normals } = generateDiverseChainLayout({
@@ -738,7 +795,18 @@ function buildChainGeometry({ rng, quality = 'mid', radius = 0.24 } = {}) {
     const phase = rng ? rng() * Math.PI * 2 : 0;
 
     const curve = new PlanarWobbleCircleCurve({ radius: ringR, center, normal, waves, amp, phase });
-    const g = new THREE.TubeGeometry(curve, tubularSegments, tubeRadius, radialSegments, true);
+
+    const check = checkSelfIntersection(curve, 0.05);
+    if (check.hasIntersection) {
+      // eslint-disable-next-line no-console
+      console.warn(`Self-intersection detected! minDist=${check.minDist}`);
+      // 可选：自动缩放曲线或重新生成
+    }
+
+    const ropeColor = FIXED_ROPE_COLOR;
+    const mesh = createRopeMesh(curve, { radius: tubeRadius, color: ropeColor, closed: true, tubularSegments, radialSegments });
+    const g = mesh.geometry;
+    if (mesh.material) mesh.material.dispose();
 
     const colors = new Float32Array(g.attributes.position.count * 3);
     const hue = (i / Math.max(1, numLinks)) * 0.85;
@@ -760,8 +828,8 @@ function buildChainGeometry({ rng, quality = 'mid', radius = 0.24 } = {}) {
 }
 
 // Build Borromean Rings
-function buildBorromeanRingsGeometry({ rng, quality = 'mid', radius = 0.24 } = {}) {
-  const { tubularSegments, radialSegments } = tubeQualityParams(quality);
+function buildBorromeanRingsGeometry({ rng, quality = 'mid', radius = 0.24, segments = null } = {}) {
+  const { tubularSegments, radialSegments } = tubeQualityParams(quality, segments);
   
   const parseVal = (id, fallback) => {
     const el = document.getElementById(id);
@@ -775,7 +843,7 @@ function buildBorromeanRingsGeometry({ rng, quality = 'mid', radius = 0.24 } = {
   const yellowY = parseVal('borromeanYellowY', 0);
   const blueY = parseVal('borromeanBlueY', 0);
 
-  const tubeRadius = radius * 0.85;
+  const tubeRadius = FIXED_ROPE_RADIUS;
   const a = R * ratio, b = R;
 
   const ringColors = [
@@ -810,7 +878,17 @@ function buildBorromeanRingsGeometry({ rng, quality = 'mid', radius = 0.24 } = {
   const geoms = [];
   for (let i = 0; i < 3; i++) {
     const curve = new EllipseCurve3D({ a, b, ...configs[i] });
-    const g = new THREE.TubeGeometry(curve, tubularSegments, tubeRadius, radialSegments, true);
+    const check = checkSelfIntersection(curve, 0.05);
+    if (check.hasIntersection) {
+      // eslint-disable-next-line no-console
+      console.warn(`Self-intersection detected! minDist=${check.minDist}`);
+      // 可选：自动缩放曲线或重新生成
+    }
+
+    const ropeColor = FIXED_ROPE_COLOR;
+    const mesh = createRopeMesh(curve, { radius: tubeRadius, color: ropeColor, closed: true, tubularSegments, radialSegments });
+    const g = mesh.geometry;
+    if (mesh.material) mesh.material.dispose();
     const colors = new Float32Array(g.attributes.position.count * 3);
     const c = ringColors[i];
     for (let j = 0; j < g.attributes.position.count; j++) {
@@ -830,8 +908,8 @@ function buildBorromeanRingsGeometry({ rng, quality = 'mid', radius = 0.24 } = {
 }
 
 // Build Kinky Unknot
-function buildKinkyUnknotGeometry({ rng, quality = 'mid', radius = 0.24 } = {}) {
-  const { tubularSegments, radialSegments } = tubeQualityParams(quality);
+function buildKinkyUnknotGeometry({ rng, quality = 'mid', radius = 0.24, segments = null } = {}) {
+  const { tubularSegments, radialSegments } = tubeQualityParams(quality, segments);
   
   const parseVal = (id, fallback) => {
     const el = document.getElementById(id);
@@ -856,7 +934,23 @@ function buildKinkyUnknotGeometry({ rng, quality = 'mid', radius = 0.24 } = {}) 
   const seed = rng ? Math.floor(rng() * 100000) : 12345;
 
   const curve = new KinkyUnknotCurve({ k, baseRadius: 1.0, kinkAmplitude: kinkAmp, seed });
-  const geom = new THREE.TubeGeometry(curve, Math.floor(tubularSegments * 1.5), radius, radialSegments, true);
+  const check = checkSelfIntersection(curve, 0.05);
+  if (check.hasIntersection) {
+    // eslint-disable-next-line no-console
+    console.warn(`Self-intersection detected! minDist=${check.minDist}`);
+    // 可选：自动缩放曲线或重新生成
+  }
+
+  const ropeColor = FIXED_ROPE_COLOR;
+  const mesh = createRopeMesh(curve, {
+    radius: FIXED_ROPE_RADIUS,
+    color: ropeColor,
+    closed: true,
+    tubularSegments: Math.floor(tubularSegments * 1.5),
+    radialSegments,
+  });
+  const geom = mesh.geometry;
+  if (mesh.material) mesh.material.dispose();
   geom.computeVertexNormals();
   geom.center();
   geom.computeBoundingSphere();
@@ -925,106 +1019,35 @@ function applyRandomRotation(geometry, rng) {
   geometry.center();
 }
 
-function adaptiveOpenLoopTubeRadius({ knotType, tightness, fallbackRadius }) {
-  const t = clamp(Number(tightness ?? 0.6), 0, 1);
-  const knotComplexity = {
-    straight: 1,
-    loose_coil: 1,
-    overhand: 2,
-    figure8: 3,
-    bowline: 3,
-    double_overhand: 4,
-    slip_knot: 3,
-    square_knot: 4,
-    clove_hitch: 3,
-    stevedore: 4,
-    sheet_bend: 3,
-    fishermans: 4,
-    figure9: 3,
-    double_fishermans: 4,
-    constrictor: 4,
-    monkeys_fist_simplified: 4,
-  };
-  const complexity = knotComplexity[String(knotType || 'overhand')] || 2;
-  const complexity01 = clamp((complexity - 1) / 4, 0, 1);
-  const baseTubeRadius = THREE.MathUtils.lerp(0.035, 0.020, complexity01);
-  const tightnessFactor = THREE.MathUtils.lerp(0.6, 1.0, t);
-  const adaptive = baseTubeRadius * tightnessFactor;
-  const fb = Number.isFinite(fallbackRadius) ? fallbackRadius : adaptive;
-  // Honor user-chosen smaller radius; otherwise use adaptive (thin) radius.
-  return Math.min(fb, adaptive);
-}
-
-function buildGeometryForPreset(presetId, { rng, quality = 'mid', radius = 0.24, applyDeform = true } = {}) {
+function buildGeometryForPreset(presetId, { rng, quality = 'mid', radius = 0.24, applyDeform = true, segments = null } = {}) {
   const p = PRESETS[presetId];
   if (!p || p.kind === 'all') return null;
 
-  // Reduce tube radius for better aesthetics
-  const tubeRadius = radius * 0.85;
+  // 固定使用细绳子（移除 UI “线粗” 控制）
+  const tubeRadius = FIXED_ROPE_RADIUS;
 
   if (p.kind === 'hopfReal') {
-    const geom = buildRealHopfLinkGeometry({ rng, quality, radius: tubeRadius });
+    const geom = buildRealHopfLinkGeometry({ rng, quality, radius: tubeRadius, segments });
     if (applyDeform && rng) applyRandomTransform(geom, rng);
     return geom;
   }
   if (p.kind === 'hopfUnlinked') {
-    const geom = buildUnlinkedRingsGeometry({ rng, quality, radius: tubeRadius });
+    const geom = buildUnlinkedRingsGeometry({ rng, quality, radius: tubeRadius, segments });
     if (applyDeform && rng) applyRandomTransform(geom, rng);
     return geom;
   }
   if (p.kind === 'chain') {
-    const geom = buildChainGeometry({ rng, quality, radius: tubeRadius });
+    const geom = buildChainGeometry({ rng, quality, radius: tubeRadius, segments });
     if (applyDeform && rng) applyRandomTransform(geom, rng);
     return geom;
   }
   if (p.kind === 'borromean') {
-    const geom = buildBorromeanRingsGeometry({ rng, quality, radius: tubeRadius });
+    const geom = buildBorromeanRingsGeometry({ rng, quality, radius: tubeRadius, segments });
     if (applyDeform && rng) applyRandomTransform(geom, rng);
     return geom;
   }
   if (p.kind === 'kinky') {
-    return buildKinkyUnknotGeometry({ rng, quality, radius: tubeRadius });
-  }
-
-  if (p.kind === 'openLoop') {
-    const parseUI = (id, fallback) => {
-      const el = document.getElementById(id);
-      if (!el) return fallback;
-      const v = parseFloat(el.value);
-      return Number.isFinite(v) ? v : fallback;
-    };
-    const baseTightness = clamp(parseUI('openTightness', 0.6), 0, 1);
-    const tightness = rng ? clamp(baseTightness + (rng() - 0.5) * 0.06, 0, 1) : baseTightness;
-    const openSeed = rng ? `${presetId}|${Math.floor(rng() * 1e9)}` : `${presetId}|${Math.random()}`;
-
-    const openTubeRadius = adaptiveOpenLoopTubeRadius({ knotType: p.openType, tightness, fallbackRadius: tubeRadius });
-
-    const makeCurve = () => {
-      const pts = generateOpenKnot(p.openType || 'straight', tightness, openSeed, { tubeRadius: openTubeRadius });
-      return new THREE.CatmullRomCurve3(pts, false, 'centripetal');
-    };
-
-    // Open ropes tend to be longer; use a slightly larger target radius.
-    const geom = estimateAndNormalizeTube({ makeCurve, closed: false, quality, radius: tubeRadius, targetOuterRadius: 1.55 });
-    // Physical-style: no anisotropic scaling / no normal deformation. Only rotate.
-    if (rng) applyRandomRotation(geom, rng);
-    return geom;
-  }
-
-  if (p.kind === 'openLoopMulti') {
-    const makeCurve = () => {
-      // Multi configs have per-knot tightness; use fallback radius only.
-      const openTubeRadius = adaptiveOpenLoopTubeRadius({ knotType: 'double_overhand', tightness: 0.7, fallbackRadius: tubeRadius });
-      const pts = generateMultiKnotPath(
-        p.configName,
-        rng ? `${presetId}|${Math.floor(rng() * 1e9)}` : `${presetId}|seed`,
-        { tubeRadius: openTubeRadius }
-      );
-      return new THREE.CatmullRomCurve3(pts, false, 'centripetal');
-    };
-    const geom = estimateAndNormalizeTube({ makeCurve, closed: false, quality, radius: tubeRadius, targetOuterRadius: 1.65 });
-    if (rng) applyRandomRotation(geom, rng);
-    return geom;
+    return buildKinkyUnknotGeometry({ rng, quality, radius: tubeRadius, segments });
   }
 
   if (p.kind === 'torus') {
@@ -1032,11 +1055,11 @@ function buildGeometryForPreset(presetId, { rng, quality = 'mid', radius = 0.24,
     const torusR = p.R || 1.0;
     const torusMinorR = p.r || Math.max(0.25, 0.45 - p.q * 0.02);
     const makeCurve = () => new TorusKnotCurve({ p: p.p, q: p.q, R: torusR, r: torusMinorR });
-    const geom = estimateAndNormalizeTube({ makeCurve, closed: true, quality, radius: tubeRadius, targetOuterRadius: 1.35 });
+    const geom = estimateAndNormalizeTube({ makeCurve, closed: true, quality, radius: FIXED_ROPE_RADIUS, targetOuterRadius: 1.35, segments });
     if (applyDeform && rng) {
       applyRandomTransform(geom, rng);
       if (rng() > 0.3) {
-        deformAlongNormal(geom, { amp: tubeRadius * 0.15 * rng(), freq: 2 + rng() * 4, phase: rng() * Math.PI * 2 });
+        deformAlongNormal(geom, { amp: FIXED_ROPE_RADIUS * 0.15 * rng(), freq: 2 + rng() * 4, phase: rng() * Math.PI * 2 });
       }
     }
     return geom;
@@ -1050,11 +1073,11 @@ function buildGeometryForPreset(presetId, { rng, quality = 'mid', radius = 0.24,
     } while (gcd(pp, qq) !== 1 || pp >= qq);
     const torusMinorR = Math.max(0.25, 0.45 - qq * 0.015);
     const makeCurve = () => new TorusKnotCurve({ p: pp, q: qq, R: 1.0, r: torusMinorR });
-    const geom = estimateAndNormalizeTube({ makeCurve, closed: true, quality, radius: tubeRadius, targetOuterRadius: 1.35 });
+    const geom = estimateAndNormalizeTube({ makeCurve, closed: true, quality, radius: FIXED_ROPE_RADIUS, targetOuterRadius: 1.35, segments });
     if (applyDeform && rng) {
       applyRandomTransform(geom, rng);
       if (rng() > 0.3) {
-        deformAlongNormal(geom, { amp: tubeRadius * 0.15 * rng(), freq: 2 + rng() * 4, phase: rng() * Math.PI * 2 });
+        deformAlongNormal(geom, { amp: FIXED_ROPE_RADIUS * 0.15 * rng(), freq: 2 + rng() * 4, phase: rng() * Math.PI * 2 });
       }
     }
     return geom;
@@ -1063,7 +1086,7 @@ function buildGeometryForPreset(presetId, { rng, quality = 'mid', radius = 0.24,
   if (p.kind === 'curveExtras') {
     const hasCurve = Curves && typeof Curves[p.extrasName] === 'function';
     const makeCurve = hasCurve ? () => new Curves[p.extrasName]() : p.fallback;
-    const geom = estimateAndNormalizeTube({ makeCurve, closed: true, quality, radius: tubeRadius, targetOuterRadius: 1.35 });
+    const geom = estimateAndNormalizeTube({ makeCurve, closed: true, quality, radius: FIXED_ROPE_RADIUS, targetOuterRadius: 1.35, segments });
     if (applyDeform && rng) {
       applyRandomTransform(geom, rng);
     }
@@ -1072,7 +1095,7 @@ function buildGeometryForPreset(presetId, { rng, quality = 'mid', radius = 0.24,
 
   if (p.kind === 'curve') {
     const makeCurve = () => p.make(rng);
-    const geom = estimateAndNormalizeTube({ makeCurve, closed: true, quality, radius: tubeRadius, targetOuterRadius: 1.35 });
+    const geom = estimateAndNormalizeTube({ makeCurve, closed: true, quality, radius: FIXED_ROPE_RADIUS, targetOuterRadius: 1.35, segments });
     if (applyDeform && rng) {
       applyRandomTransform(geom, rng);
     }
@@ -1117,10 +1140,19 @@ function buildGeometryForPreset(presetId, { rng, quality = 'mid', radius = 0.24,
     });
 
     // For Spiral Loop, we do NOT scale or deform it after creation, as it ruins the physical gap.
-    const { tubularSegments, radialSegments } = tubeQualityParams(quality);
+    const { tubularSegments, radialSegments } = tubeQualityParams(quality, segments);
     const curve = makeCurve();
-    // Use high tubular segments to make the piecewise parametric centerline look smooth
-    const geom = new THREE.TubeGeometry(curve, Math.max(280, tubularSegments), tubeRadius, radialSegments, true);
+    const check = checkSelfIntersection(curve, 0.05);
+    if (check.hasIntersection) {
+      // eslint-disable-next-line no-console
+      console.warn(`Self-intersection detected! minDist=${check.minDist}`);
+      // 可选：自动缩放曲线或重新生成
+    }
+
+    const ropeColor = FIXED_ROPE_COLOR;
+    const mesh = createRopeMesh(curve, { radius: FIXED_ROPE_RADIUS, color: ropeColor, closed: true, tubularSegments: Math.max(280, tubularSegments), radialSegments });
+    const geom = mesh.geometry;
+    if (mesh.material) mesh.material.dispose();
     geom.center();
     return geom;
   }
@@ -1155,7 +1187,7 @@ function buildGeometryForPreset(presetId, { rng, quality = 'mid', radius = 0.24,
   }
 
   // Fallback
-  return estimateAndNormalizeTube({ makeCurve: () => new CircleCurve({ radius: 1.0 }), closed: true, quality, radius: tubeRadius, targetOuterRadius: 1.35 });
+  return estimateAndNormalizeTube({ makeCurve: () => new CircleCurve({ radius: 1.0 }), closed: true, quality, radius: FIXED_ROPE_RADIUS, targetOuterRadius: 1.35, segments });
 }
 
 // ============= Three.js Scene =============
@@ -1166,6 +1198,7 @@ const statusEl = document.getElementById('status');
 let scene, camera, renderer, controls;
 let root = new THREE.Group();
 let current = { meshes: [], geometries: [] };
+let regenSeq = 0;
 
 function setStatus({ title, three, presetName, count }) {
   statusEl.innerHTML = `
@@ -1199,8 +1232,9 @@ function initThree() {
   controls.target.set(0, 0, 0);
 
   // Enhanced lighting (from simple gallery)
-  scene.add(new THREE.AmbientLight(0xffffff, 1.2));
-  const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 0.8);
+  scene.add(new THREE.AmbientLight(0xffffff, 1.05));
+  // Weak hemisphere light to simulate environment bounce (keep subtle)
+  const hemi = new THREE.HemisphereLight(0xffffff, 0x2a335a, 0.22);
   scene.add(hemi);
   
   const dir = new THREE.DirectionalLight(0xffffff, 1.5);
@@ -1321,6 +1355,102 @@ function buildInstancedMesh(geometry, { count, cols, rng, layout, globalScale, i
   return mesh;
 }
 
+function buildInstancedMeshesLOD(geometryHigh, geometryLow, {
+  count,
+  cols,
+  rng,
+  layout,
+  globalScale,
+  instanceOffset = 0,
+  totalCount = 0,
+  spacing,
+  // LOD rule (world XZ distance from origin)
+  nearRadiusFactor = 1.75, // threshold = nearRadiusFactor * baseSpacing
+} = {}) {
+  // Ensure both geometries have vertex colors (white), so instanceColor works as expected.
+  for (const g of [geometryHigh, geometryLow]) {
+    if (g && !g.attributes.color) {
+      const colors = new Float32Array(g.attributes.position.count * 3).fill(1.0);
+      g.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    }
+  }
+
+  const finalTotal = totalCount || count;
+  const { baseSpacing, jitter } = spacing || computeSpacingFromGeometry({ geometry: geometryHigh || geometryLow, layout, globalScale });
+  const nearR = Math.max(0, Number(nearRadiusFactor) || 1.75) * baseSpacing;
+
+  const matricesHigh = [];
+  const colorsHigh = [];
+  const matricesLow = [];
+  const colorsLow = [];
+
+  const m = new THREE.Matrix4();
+  const tmpColor = new THREE.Color();
+
+  for (let i = 0; i < count; i++) {
+    const globalIdx = instanceOffset + i;
+    const { x, z } = finalTotal === 1 ? { x: 0, z: 0 } : layoutPosition({ i: globalIdx, count: finalTotal, cols, rng, baseSpacing, jitter });
+
+    const rx = rng() * Math.PI * 2;
+    const ry = rng() * Math.PI * 2;
+    const rz = rng() * Math.PI * 2;
+    const s = globalScale * (0.8 + rng() * 0.4);
+
+    placeMatrix(m, x, 0, z, rx, ry, rz, s);
+    tmpColor.copy(randomBright(rng));
+
+    const r = Math.sqrt(x * x + z * z);
+    if (r <= nearR) {
+      matricesHigh.push(m.clone());
+      colorsHigh.push(tmpColor.clone());
+    } else {
+      matricesLow.push(m.clone());
+      colorsLow.push(tmpColor.clone());
+    }
+  }
+
+  const makeMaterial = () => new THREE.MeshStandardMaterial({
+    color: 0xffffff,
+    roughness: 0.35,
+    metalness: 0.15,
+    vertexColors: true,
+    emissive: new THREE.Color(0x111111),
+    emissiveIntensity: 0.2,
+  });
+
+  const meshes = [];
+
+  if (matricesHigh.length) {
+    const mat = makeMaterial();
+    const meshH = new THREE.InstancedMesh(geometryHigh, mat, matricesHigh.length);
+    meshH.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    meshH.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(matricesHigh.length * 3), 3);
+    for (let i = 0; i < matricesHigh.length; i++) {
+      meshH.setMatrixAt(i, matricesHigh[i]);
+      meshH.setColorAt(i, colorsHigh[i]);
+    }
+    meshH.instanceMatrix.needsUpdate = true;
+    meshH.instanceColor.needsUpdate = true;
+    meshes.push(meshH);
+  }
+
+  if (matricesLow.length) {
+    const mat = makeMaterial();
+    const meshL = new THREE.InstancedMesh(geometryLow, mat, matricesLow.length);
+    meshL.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    meshL.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(matricesLow.length * 3), 3);
+    for (let i = 0; i < matricesLow.length; i++) {
+      meshL.setMatrixAt(i, matricesLow[i]);
+      meshL.setColorAt(i, colorsLow[i]);
+    }
+    meshL.instanceMatrix.needsUpdate = true;
+    meshL.instanceColor.needsUpdate = true;
+    meshes.push(meshL);
+  }
+
+  return { meshes, baseSpacing, jitter };
+}
+
 function fitCameraToContent({ geometry, count, cols, layout, globalScale, spacing }) {
   const colsEff = Math.max(1, Math.min(cols, count));
   const rowsEff = Math.max(1, Math.ceil(count / colsEff));
@@ -1343,7 +1473,8 @@ function fitCameraToContent({ geometry, count, cols, layout, globalScale, spacin
   controls.update();
 }
 
-function regenerate() {
+async function regenerate() {
+  const mySeq = ++regenSeq;
   const seedStr = document.getElementById('seed')?.value || 'knot-gallery-v1';
   const rng = makeRng(seedStr);
 
@@ -1354,7 +1485,7 @@ function regenerate() {
   const cols = parsePositiveInt(document.getElementById('cols')?.value, 4, { min: 1, max: 50 });
   const quality = document.getElementById('quality')?.value || 'mid';
   const layout = document.getElementById('layout')?.value || 'grid';
-  const radius = parseNumber(document.getElementById('radius')?.value, 0.24, { min: 0.02, max: 0.6 });
+  const radius = FIXED_ROPE_RADIUS;
   const globalScale = parseNumber(document.getElementById('scale')?.value, 1.0, { min: 0.3, max: 3.0 });
 
   disposeCurrent();
@@ -1393,7 +1524,9 @@ function regenerate() {
     const perVar = Math.ceil(count / VARIATION_COUNT);
     let totalCreated = 0;
 
-    const firstGeom = buildGeometryForPreset(presetId, { rng, quality, radius });
+    // Spacing should reflect the visible (high) geometry.
+    const spacingGeomRng = makeRng(`${seedStr}|${presetId}|spacing`);
+    const firstGeom = buildGeometryForPreset(presetId, { rng: spacingGeomRng, quality, radius, applyDeform: count === 1, segments: { tubularSegments: 300, radialSegments: 16 } });
     const spacing = computeSpacingFromGeometry({ geometry: firstGeom, layout, globalScale });
     firstGeom.dispose();
 
@@ -1401,17 +1534,32 @@ function regenerate() {
       const numForThisVar = Math.min(perVar, count - totalCreated);
       if (numForThisVar <= 0) break;
 
-      const geometry = buildGeometryForPreset(presetId, { rng, quality, radius });
-      if (!geometry) continue;
+      const segHigh = { tubularSegments: 300, radialSegments: 16 };
+      const segLow = { tubularSegments: 100, radialSegments: 8 };
 
-      const mesh = buildInstancedMesh(geometry, { count: numForThisVar, cols, rng, layout, globalScale, instanceOffset: totalCreated, totalCount: count, spacing });
-      root.add(mesh);
-      current.meshes.push(mesh);
-      current.geometries.push(geometry);
+      // Use the SAME seeded RNG stream for both LOD geometries so shapes match.
+      const geomSeed = `${seedStr}|${presetId}|v=${v}`;
+      const geometryHigh = buildGeometryForPreset(presetId, { rng: makeRng(geomSeed), quality, radius, applyDeform: count === 1, segments: segHigh });
+      const geometryLow = count > 1 ? buildGeometryForPreset(presetId, { rng: makeRng(geomSeed), quality, radius, applyDeform: false, segments: segLow }) : null;
+      if (!geometryHigh) continue;
+
+      if (count > 1 && geometryLow) {
+        const { meshes } = buildInstancedMeshesLOD(geometryHigh, geometryLow, { count: numForThisVar, cols, rng, layout, globalScale, instanceOffset: totalCreated, totalCount: count, spacing });
+        for (const m of meshes) {
+          root.add(m);
+          current.meshes.push(m);
+        }
+        current.geometries.push(geometryHigh, geometryLow);
+      } else {
+        const mesh = buildInstancedMesh(geometryHigh, { count: numForThisVar, cols, rng, layout, globalScale, instanceOffset: totalCreated, totalCount: count, spacing });
+        root.add(mesh);
+        current.meshes.push(mesh);
+        current.geometries.push(geometryHigh);
+      }
       totalCreated += numForThisVar;
 
       if (v === 0) {
-        fitCameraToContent({ geometry, count, cols, layout, globalScale, spacing });
+        fitCameraToContent({ geometry: geometryHigh, count, cols, layout, globalScale, spacing });
       }
     }
 
@@ -1429,10 +1577,8 @@ function exportDataset() {
   const presetId = document.getElementById('preset')?.value || 'trefoil';
   const count = parsePositiveInt(document.getElementById('count')?.value, 16, { min: 1, max: 500 });
   const deformStrength = clamp(parseNumber(document.getElementById('deform')?.value, 0.25, { min: 0, max: 1 }), 0, 1);
-  const tubeRadius = parseNumber(document.getElementById('radius')?.value, 0.24, { min: 0.02, max: 0.6 });
+  const tubeRadius = FIXED_ROPE_RADIUS;
   const cameraPosition = camera ? [camera.position.x, camera.position.y, camera.position.z] : [0, 3.2, 6.2];
-  const openTightness = clamp(parseNumber(document.getElementById('openTightness')?.value, 0.6, { min: 0, max: 1 }), 0, 1);
-  
   const dataset = {
     version: 1,
     createdAt: new Date().toISOString(),
@@ -1445,41 +1591,14 @@ function exportDataset() {
 
   // Generate sample metadata
   const rng = makeRng(seedStr);
-  const openMultiKnotCount = {
-    double_overhand_real: 2,
-    mixed_knots: 2,
-    triple_knots: 3,
-  };
   for (let i = 0; i < count; i++) {
     const presetInfo = PRESETS[presetId] || {};
-    let unified = null;
-
-    if (presetInfo.kind === 'openLoop' || presetInfo.kind === 'openLoopMulti') {
-      const openType = presetInfo.openType || presetInfo.configName || 'unknown';
-      const hasKnot =
-        presetInfo.kind === 'openLoopMulti' ? true :
-        (presetInfo.openType === 'straight' ? false :
-          (presetInfo.openType === 'loose_coil' ? false : true));
-
-      const knotCount =
-        presetInfo.kind === 'openLoopMulti'
-          ? (openMultiKnotCount[presetInfo.configName] ?? 2)
-          : (hasKnot ? 1 : 0);
-
-      unified = computeSingleOpenLoopDifficulty({
-        knotType: presetInfo.openType || 'unknown',
-        tightness: openTightness,
-        knotCount,
-        hasKnot,
-      });
-    } else {
-      unified = computeSingleClosedLoopDifficulty({
-        knotType: presetId,
-        deformStrength,
-        cameraPosition,
-        tubeRadius,
-      });
-    }
+    const unified = computeSingleClosedLoopDifficulty({
+      knotType: presetId,
+      deformStrength,
+      cameraPosition,
+      tubeRadius,
+    });
 
     dataset.samples.push({
       id: `sample_${String(i).padStart(5, '0')}`,
@@ -1512,7 +1631,7 @@ document.getElementById('btnGenerate')?.addEventListener('click', regenerate);
 document.getElementById('btnExport')?.addEventListener('click', exportDataset);
 
 // Slider auto-regenerate
-['chainR', 'chainNumLinks', 'chainOffsetY', 'chainSpacing', 'borromeanR', 'borromeanRatio', 'borromeanYellowY', 'borromeanBlueY', 'kinkCount', 'kinkAmplitude', 'openTightness'].forEach(id => {
+['chainR', 'chainNumLinks', 'chainOffsetY', 'chainSpacing', 'borromeanR', 'borromeanRatio', 'borromeanYellowY', 'borromeanBlueY', 'kinkCount', 'kinkAmplitude'].forEach(id => {
   document.getElementById(id)?.addEventListener('input', regenerate);
 });
 
