@@ -14,6 +14,9 @@
 import * as THREE from 'three';
 
 function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+function isFiniteVec3(p) {
+  return Number.isFinite(p?.x) && Number.isFinite(p?.y) && Number.isFinite(p?.z);
+}
 
 /**
  * Apply simple physics-style constraints to reduce obvious interpenetrations:
@@ -179,7 +182,11 @@ export function optimizeCurve(points, targetSegments = 240, options = {}) {
   );
 
   const internalSamples = Math.max(50, Math.floor(targetSegments * clamp(Number(internalSamplesFactor) || 2.0, 1.0, 6.0)));
-  const dense = curve.getPoints(internalSamples);
+  let dense = curve.getPoints(internalSamples);
+  dense = dense.filter(isFiniteVec3);
+  if (dense.length < 10) {
+    throw new Error('[pipeline] Too few valid points for optimizeCurve');
+  }
   return resamplePolyline(dense, targetSegments);
 }
 
@@ -214,6 +221,8 @@ export function checkSelfIntersection(curveOrPoints, minDistance = 0.05, options
     pts = curveOrPoints.map(p => (p?.isVector3 ? p : new THREE.Vector3(p.x || 0, p.y || 0, p.z || 0)));
   } else if (curveOrPoints && typeof curveOrPoints.getPoints === 'function') {
     pts = curveOrPoints.getPoints(Math.max(50, Math.floor(sampleCount)));
+    pts = pts.filter(isFiniteVec3);
+    if (pts.length < 10) return { hasIntersection: false, minDist: Infinity };
   } else {
     return { hasIntersection: false, minDist: Infinity };
   }
@@ -322,10 +331,14 @@ export function createRopeMesh(curve, {
   // Sample points, push apart close non-neighbors, then rebuild a smooth curve.
   const sampleN = Math.max(20, Math.floor(tubularSegments));
   let pts = usedCurve.getPoints(sampleN);
+  pts = pts.filter(isFiniteVec3);
+  if (pts.length < 10) {
+    throw new Error('[pipeline] Too few valid points for createRopeMesh');
+  }
   const physCfg = {
-    minDistance: Math.max(0, (Number(radius) || 0.02) * 2),
-    repulsionStrength: 0.1,
-    iterations: 15,
+    minDistance: Math.max(0.06, (Number(radius) || 0.02) * 3),
+    repulsionStrength: 0.15,
+    iterations: 20,
     closed: Boolean(closed),
     ...physics,
   };

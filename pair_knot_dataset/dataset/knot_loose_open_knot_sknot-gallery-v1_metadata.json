@@ -1,0 +1,95 @@
+{
+  "version": "1.1",
+  "knotType": "loose_open_knot",
+  "topologicalId": null,
+  "isKnot": true,
+  "isUnknot": false,
+  "isDeceptive": false,
+  "isLoose": true,
+  "crossingNumber": null,
+  "slackness": 1,
+  "deformStrength": 0.3,
+  "seed": "knot-gallery-v1",
+  "difficulty": "low",
+  "bucket_topology": "low",
+  "bucket_saliency": "loose",
+  "trap_type": null,
+  "images": [
+    {
+      "filename": "knot_loose_open_knot_sknot-gallery-v1_slack1.00_front.png",
+      "cameraAngle": "front",
+      "cameraPos": [
+        0,
+        2,
+        8
+      ]
+    },
+    {
+      "filename": "knot_loose_open_knot_sknot-gallery-v1_slack1.00_back.png",
+      "cameraAngle": "back",
+      "cameraPos": [
+        0,
+        2,
+        -8
+      ]
+    },
+    {
+      "filename": "knot_loose_open_knot_sknot-gallery-v1_slack1.00_left.png",
+      "cameraAngle": "left",
+      "cameraPos": [
+        -8,
+        2,
+        0
+      ]
+    },
+    {
+      "filename": "knot_loose_open_knot_sknot-gallery-v1_slack1.00_right.png",
+      "cameraAngle": "right",
+      "cameraPos": [
+        8,
+        2,
+        0
+      ]
+    },
+    {
+      "filename": "knot_loose_open_knot_sknot-gallery-v1_slack1.00_top.png",
+      "cameraAngle": "top",
+      "cameraPos": [
+        0,
+        10,
+        0.1
+      ]
+    },
+    {
+      "filename": "knot_loose_open_knot_sknot-gallery-v1_slack1.00_iso_fr.png",
+      "cameraAngle": "iso_fr",
+      "cameraPos": [
+        5,
+        5,
+        7
+      ]
+    },
+    {
+      "filename": "knot_loose_open_knot_sknot-gallery-v1_slack1.00_iso_bk.png",
+      "cameraAngle": "iso_bk",
+      "cameraPos": [
+        -5,
+        5,
+        -7
+      ]
+    },
+    {
+      "filename": "knot_loose_open_knot_sknot-gallery-v1_slack1.00_oblique.png",
+      "cameraAngle": "oblique",
+      "cameraPos": [
+        3,
+        8,
+        4
+      ]
+    }
+  ],
+  "groundTruth": {
+    "task_knotted_or_not": "knotted",
+    "task_knot_family": "unknown"
+  }
+}

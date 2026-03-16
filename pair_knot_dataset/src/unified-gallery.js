@@ -9,12 +9,31 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import * as CurveExtras from 'three/addons/curves/CurveExtras.js';
 import { computeGaussCodeBestProjection } from './gauss-code-generator.js';
-import { computeSingleClosedLoopDifficulty } from './difficulty-controller.js';
+import {
+  computeSingleClosedLoopDifficulty,
+  getBucketTopology,
+  getBucketSaliency,
+  getTrapType,
+} from './difficulty-controller.js';
 import { createRopeMesh, checkSelfIntersection } from './rope-renderer-unified.js';
+import { processCenterline } from './centerline-pipeline.js';
+import { KNOT_TYPE_REGISTRY } from './knot-type-registry.js';
 
 const Curves = CurveExtras.Curves || CurveExtras;
 const FIXED_ROPE_RADIUS = 0.02; // 固定细绳子
+const VISUAL_ROPE_RADIUS_SCALE = 1.28; // 仅提升视觉可读性，不改基准常量
+const DISPLAY_ROPE_RADIUS = FIXED_ROPE_RADIUS * VISUAL_ROPE_RADIUS_SCALE;
 const FIXED_ROPE_COLOR = '#ffffff';
+const STANDARD_CAMERA_ANGLES = [
+  { name: 'front', pos: [0, 2, 8] },
+  { name: 'back', pos: [0, 2, -8] },
+  { name: 'left', pos: [-8, 2, 0] },
+  { name: 'right', pos: [8, 2, 0] },
+  { name: 'top', pos: [0, 10, 0.1] },
+  { name: 'iso_fr', pos: [5, 5, 7] },
+  { name: 'iso_bk', pos: [-5, 5, -7] },
+  { name: 'oblique', pos: [3, 8, 4] },
+];
 
 // ============= Seeded RNG =============
 function xmur3(str) {
@@ -171,7 +190,7 @@ class SpiralLoopCurve extends THREE.Curve {
 
     // Return path: add one more turn while diving below z=0
     this.returnEndAngle = this.endAngle + Math.PI * 2; // one extra full turn
-    this.returnMidZ = -(this.tubeRadius * 3.5); // dip well below first layer for clearance
+    this.returnMidZ = -(this.tubeRadius * 5.5); // dip well below first layer for clearance
 
     // Phase distribution (forward spiral / return helix)
     this.tForward = 0.65;
@@ -277,6 +296,145 @@ class KinkyUnknotCurve extends THREE.Curve {
   }
 }
 
+function buildLooseOpenKnotGeometry({
+  rng,
+  quality = 'mid',
+  radius = 0.24,
+  deformStrength = 0.3,
+  slackness = 0.4,
+  segments = null,
+} = {}) {
+  const { tubularSegments, radialSegments } = tubeQualityParams(quality, segments);
+  const ropeColor = FIXED_ROPE_COLOR;
+  const tubeRadius = DISPLAY_ROPE_RADIUS;
+  const s = clamp(Number(slackness) || 0, 0, 1);
+  const d = clamp(Number(deformStrength) || 0, 0, 1);
+
+  // Base shape from trefoil-like centerline, then cut open and add loose tails.
+  const baseCurve = new TorusKnotCurve({ p: 2, q: 3, R: 1.0, r: 0.38 });
+  const sampleN = 420;
+  let ringPts = baseCurve.getPoints(sampleN);
+  ringPts = ringPts.filter((p) => Number.isFinite(p?.x) && Number.isFinite(p?.y) && Number.isFinite(p?.z));
+  if (ringPts.length < 40) {
+    const fallback = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(-1.4, -0.2, 0.1),
+      new THREE.Vector3(-0.8, 0.5, 0.3),
+      new THREE.Vector3(0.2, 0.7, -0.2),
+      new THREE.Vector3(0.9, 0.1, 0.4),
+      new THREE.Vector3(0.5, -0.7, -0.1),
+      new THREE.Vector3(-0.6, -0.8, 0.2),
+      new THREE.Vector3(-1.3, -0.1, -0.2),
+      new THREE.Vector3(-1.9, 0.4, 0.1),
+    ], false, 'centripetal');
+    const fallbackMesh = createRopeMesh(fallback, {
+      radius: tubeRadius,
+      color: ropeColor,
+      closed: false,
+      tubularSegments: Math.max(260, tubularSegments),
+      radialSegments,
+    });
+    const fallbackGeom = fallbackMesh.geometry;
+    if (fallbackMesh.material) fallbackMesh.material.dispose();
+    fallbackGeom.center();
+    fallbackGeom.computeBoundingSphere();
+    const s0 = fallbackGeom.boundingSphere?.radius > 1e-6 ? (1.35 / fallbackGeom.boundingSphere.radius) : 1.0;
+    fallbackGeom.scale(s0, s0, s0);
+    fallbackGeom.center();
+    return fallbackGeom;
+  }
+
+  const start = Math.floor((rng ? rng() : 0.15) * ringPts.length * 0.35);
+  const span = Math.max(80, Math.floor(ringPts.length * 0.82));
+  let corePts = [];
+  for (let i = 0; i <= span; i++) {
+    corePts.push(ringPts[(start + i) % ringPts.length].clone());
+  }
+
+  // Make it look looser and ring-like while keeping residual knot structure.
+  const zScale = clamp(1.0 - 0.72 * s, 0.18, 1.0);
+  const deformAmp = d * (0.05 + 0.09 * (1 - 0.5 * s));
+  const tau = Math.PI * 2;
+  const ph1 = (rng ? rng() : 0.31) * tau;
+  const ph2 = (rng ? rng() : 0.47) * tau;
+  const ph3 = (rng ? rng() : 0.63) * tau;
+  for (let i = 0; i < corePts.length; i++) {
+    const t = i / Math.max(1, corePts.length - 1);
+    const w = Math.exp(-((t - 0.5) ** 2) / 0.07);
+    const stretch = 1 + (0.03 + 0.18 * s) * w;
+    corePts[i].multiplyScalar(stretch);
+    corePts[i].z *= zScale;
+    if (deformAmp > 1e-6) {
+      const nx = 0.65 * Math.sin(tau * (1.6 + 0.8 * s) * t + ph1) + 0.35 * Math.cos(tau * 3.1 * t + ph2);
+      const ny = 0.60 * Math.cos(tau * (1.2 + 0.6 * d) * t + ph2) + 0.40 * Math.sin(tau * 2.7 * t + ph1);
+      const nz = 0.75 * Math.sin(tau * (1.0 + 0.7 * s) * t + ph3);
+      corePts[i].x += deformAmp * nx;
+      corePts[i].y += deformAmp * ny;
+      corePts[i].z += deformAmp * 0.7 * nz;
+    }
+  }
+
+  // Add open rope tails on both ends.
+  const headDir = corePts[0].clone().sub(corePts[1]).normalize();
+  const tailDir = corePts[corePts.length - 1].clone().sub(corePts[corePts.length - 2]).normalize();
+  const tailLenA = (0.70 + 0.55 * s) + (rng ? rng() * 0.35 : 0.2);
+  const tailLenB = (0.75 + 0.60 * s) + (rng ? rng() * 0.35 : 0.2);
+  const liftZ = 1.0 - 0.6 * s;
+  const liftA = new THREE.Vector3(-0.10, 0.18, 0.08 * liftZ);
+  const liftB = new THREE.Vector3(0.12, -0.15, -0.10 * liftZ);
+
+  const h0 = corePts[0].clone();
+  const h1 = h0.clone().addScaledVector(headDir, tailLenA * 0.7).addScaledVector(liftA, 0.6);
+  const h2 = h0.clone().addScaledVector(headDir, tailLenA * 1.5).add(liftA);
+  const t0 = corePts[corePts.length - 1].clone();
+  const t1 = t0.clone().addScaledVector(tailDir, tailLenB * 0.7).addScaledVector(liftB, 0.6);
+  const t2 = t0.clone().addScaledVector(tailDir, tailLenB * 1.5).add(liftB);
+
+  corePts = [h2, h1, ...corePts, t1, t2];
+
+  // Open-curve smoothing and resampling to suppress local jaggedness.
+  let openCurve = new THREE.CatmullRomCurve3(corePts, false, 'centripetal');
+  let smoothPts = openCurve.getPoints(Math.max(260, tubularSegments));
+  smoothPts = smoothPts.filter((p) => Number.isFinite(p?.x) && Number.isFinite(p?.y) && Number.isFinite(p?.z));
+  if (smoothPts.length >= 20) {
+    const iters = Math.round(4 + 8 * s + 4 * d);
+    const beta = 0.12 + 0.10 * s;
+    for (let it = 0; it < iters; it++) {
+      const next = smoothPts.map((p) => p.clone());
+      for (let i = 1; i < smoothPts.length - 1; i++) {
+        const avg = smoothPts[i - 1].clone().add(smoothPts[i]).add(smoothPts[i + 1]).divideScalar(3);
+        next[i].lerp(avg, beta);
+      }
+      smoothPts = next;
+    }
+    openCurve = new THREE.CatmullRomCurve3(smoothPts, false, 'centripetal');
+  }
+
+  const mesh = createRopeMesh(openCurve, {
+    radius: tubeRadius,
+    color: ropeColor,
+    closed: false,
+    tubularSegments: Math.max(280, tubularSegments),
+    radialSegments,
+    physics: {
+      minDistance: Math.max(0.06, tubeRadius * (2.6 + 0.8 * s)),
+      repulsionStrength: 0.10 + 0.06 * s,
+      iterations: Math.round(16 + 6 * s),
+      neighborSkip: 10,
+      closed: false,
+      pinEnds: true,
+    },
+  });
+
+  const geom = mesh.geometry;
+  if (mesh.material) mesh.material.dispose();
+  geom.center();
+  geom.computeBoundingSphere();
+  const sNorm = geom.boundingSphere?.radius > 1e-6 ? (1.35 / geom.boundingSphere.radius) : 1.0;
+  geom.scale(sNorm, sNorm, sNorm);
+  geom.center();
+  return geom;
+}
+
 // ============= Preset Definitions =============
 
 const PRESETS = {
@@ -297,6 +455,7 @@ const PRESETS = {
   twisted_ring: { name: 'Twisted Ring', kind: 'curve', make: (rng) => new TwistedRingCurve({ R: 1.0, twist: 2 + Math.floor((rng?.() || 0.5) * 5), wobble: 0.18 + (rng?.() || 0.5) * 0.18, height: 0.3 + (rng?.() || 0.5) * 0.25 }), difficulty: 'easy', crossings: 0, isUnknot: true },
   spiral_disk: { name: 'Spiral Loop', kind: 'spiralLoop', difficulty: 'medium', crossings: 0, isUnknot: true },
   kinky_unknot: { name: 'Kinky Unknot', kind: 'kinky', difficulty: 'hard', crossings: 0, isUnknot: true, isDeceptive: true },
+  loose_open_knot: { name: 'Loose Open Knot', kind: 'openLooseKnot', difficulty: 'hard', crossings: 3, isOpen: true },
   
   // Links
   hopf_link: { name: 'Hopf Link', kind: 'hopfReal', difficulty: 'easy', isLink: true },
@@ -373,7 +532,9 @@ function estimateAndNormalizeTube({ makeCurve, closed = true, quality = 'mid', r
   }
 
   // Estimate scale using centerline points (avoid creating TubeGeometry here).
-  const pts = curve.getPoints(Math.max(64, Math.floor(tubularSegments)));
+  let pts = curve.getPoints(Math.max(64, Math.floor(tubularSegments)));
+  pts = pts.filter((p) => Number.isFinite(p?.x) && Number.isFinite(p?.y) && Number.isFinite(p?.z));
+  if (pts.length < 10) throw new Error('[pipeline] Too few valid points for estimateAndNormalizeTube');
   const sphere = new THREE.Sphere();
   new THREE.Box3().setFromPoints(pts).getBoundingSphere(sphere);
   const sNorm = sphere.radius > 1e-6 ? (targetOuterRadius / sphere.radius) : 1.0;
@@ -404,7 +565,7 @@ function buildRealHopfLinkGeometry({ rng, quality = 'mid', radius = 0.24, segmen
   const phaseB = rng ? rng() * Math.PI * 2 : 0;
 
   const R = 1.5;
-  const tubeRadius = FIXED_ROPE_RADIUS;
+  const tubeRadius = DISPLAY_ROPE_RADIUS;
 
   const curveA = new PlanarWobbleCircleCurve({ radius: R, center: new THREE.Vector3(0, 0, 0), normal: new THREE.Vector3(0, 0, 1), waves: wavesA, amp: ampA, phase: phaseA });
   const curveB = new PlanarWobbleCircleCurve({ radius: R, center: new THREE.Vector3(0, -2, 0), normal: new THREE.Vector3(1, 0, 0), waves: wavesB, amp: ampB, phase: phaseB });
@@ -464,7 +625,7 @@ function buildUnlinkedRingsGeometry({ rng, quality = 'mid', radius = 0.24, segme
   const offsetX = rng ? 2.2 + rng() * 0.5 : 2.5;
   const curveB = new PlanarWobbleCircleCurve({ radius: R, center: new THREE.Vector3(offsetX, 0, 0), normal: new THREE.Vector3(0, 0, 1), waves: 3, amp: ampB });
 
-  const tubeRadius = FIXED_ROPE_RADIUS;
+  const tubeRadius = DISPLAY_ROPE_RADIUS;
   const ropeColor = FIXED_ROPE_COLOR;
   {
     const check = checkSelfIntersection(curveA, 0.05);
@@ -772,7 +933,7 @@ function buildChainGeometry({ rng, quality = 'mid', radius = 0.24, segments = nu
   const chainStep = parseVal('chainSpacing', 0) * R;
   const effectiveStep = Math.abs(chainStep) < 0.01 ? Math.abs(linkOffsetY) : chainStep;
 
-  const tubeRadius = FIXED_ROPE_RADIUS;
+  const tubeRadius = DISPLAY_ROPE_RADIUS;
   const geoms = [];
 
   const { centers, normals } = generateDiverseChainLayout({
@@ -843,7 +1004,7 @@ function buildBorromeanRingsGeometry({ rng, quality = 'mid', radius = 0.24, segm
   const yellowY = parseVal('borromeanYellowY', 0);
   const blueY = parseVal('borromeanBlueY', 0);
 
-  const tubeRadius = FIXED_ROPE_RADIUS;
+  const tubeRadius = DISPLAY_ROPE_RADIUS;
   const a = R * ratio, b = R;
 
   const ringColors = [
@@ -943,7 +1104,7 @@ function buildKinkyUnknotGeometry({ rng, quality = 'mid', radius = 0.24, segment
 
   const ropeColor = FIXED_ROPE_COLOR;
   const mesh = createRopeMesh(curve, {
-    radius: FIXED_ROPE_RADIUS,
+    radius: DISPLAY_ROPE_RADIUS,
     color: ropeColor,
     closed: true,
     tubularSegments: Math.floor(tubularSegments * 1.5),
@@ -1019,12 +1180,39 @@ function applyRandomRotation(geometry, rng) {
   geometry.center();
 }
 
-function buildGeometryForPreset(presetId, { rng, quality = 'mid', radius = 0.24, applyDeform = true, segments = null } = {}) {
+function buildGeometryForPreset(presetId, {
+  rng,
+  quality = 'mid',
+  radius = 0.24,
+  applyDeform = true,
+  deformStrength = 0.3,
+  slackness = 0.4,
+  segments = null,
+} = {}) {
   const p = PRESETS[presetId];
   if (!p || p.kind === 'all') return null;
 
   // 固定使用细绳子（移除 UI “线粗” 控制）
-  const tubeRadius = FIXED_ROPE_RADIUS;
+  const tubeRadius = DISPLAY_ROPE_RADIUS;
+  const buildProcessedTube = (rawCurve, { closed = true, targetOuterRadius = 1.35 } = {}) => {
+    const { tubularSegments, radialSegments } = tubeQualityParams(quality, segments);
+    const curve = processCenterline(rawCurve, {
+      rng: rng || null,
+      deformStrength: applyDeform ? deformStrength : 0,
+      slackness: applyDeform ? slackness : 0,
+      tubeRadius,
+      sampleN: Math.max(240, tubularSegments),
+      closed,
+      knotType: presetId,
+    });
+    const geom = new THREE.TubeGeometry(curve, tubularSegments, tubeRadius, radialSegments, closed);
+    geom.center();
+    geom.computeBoundingSphere();
+    const sNorm = geom.boundingSphere?.radius > 1e-6 ? (targetOuterRadius / geom.boundingSphere.radius) : 1.0;
+    geom.scale(sNorm, sNorm, sNorm);
+    if (geom.attributes.normal) geom.normalizeNormals();
+    return geom;
+  };
 
   if (p.kind === 'hopfReal') {
     const geom = buildRealHopfLinkGeometry({ rng, quality, radius: tubeRadius, segments });
@@ -1049,20 +1237,22 @@ function buildGeometryForPreset(presetId, { rng, quality = 'mid', radius = 0.24,
   if (p.kind === 'kinky') {
     return buildKinkyUnknotGeometry({ rng, quality, radius: tubeRadius, segments });
   }
+  if (p.kind === 'openLooseKnot') {
+    return buildLooseOpenKnotGeometry({
+      rng,
+      quality,
+      radius: tubeRadius,
+      deformStrength: applyDeform ? deformStrength : 0,
+      slackness: applyDeform ? slackness : 0,
+      segments,
+    });
+  }
 
   if (p.kind === 'torus') {
-    // Use preset's r value or calculate based on q for slimmer knots
     const torusR = p.R || 1.0;
     const torusMinorR = p.r || Math.max(0.25, 0.45 - p.q * 0.02);
-    const makeCurve = () => new TorusKnotCurve({ p: p.p, q: p.q, R: torusR, r: torusMinorR });
-    const geom = estimateAndNormalizeTube({ makeCurve, closed: true, quality, radius: FIXED_ROPE_RADIUS, targetOuterRadius: 1.35, segments });
-    if (applyDeform && rng) {
-      applyRandomTransform(geom, rng);
-      if (rng() > 0.3) {
-        deformAlongNormal(geom, { amp: FIXED_ROPE_RADIUS * 0.15 * rng(), freq: 2 + rng() * 4, phase: rng() * Math.PI * 2 });
-      }
-    }
-    return geom;
+    const rawCurve = new TorusKnotCurve({ p: p.p, q: p.q, R: torusR, r: torusMinorR });
+    return buildProcessedTube(rawCurve, { closed: true, targetOuterRadius: 1.35 });
   }
 
   if (p.kind === 'torusRandom') {
@@ -1072,33 +1262,24 @@ function buildGeometryForPreset(presetId, { rng, quality = 'mid', radius = 0.24,
       qq = 3 + Math.floor((rng?.() || Math.random()) * 8);
     } while (gcd(pp, qq) !== 1 || pp >= qq);
     const torusMinorR = Math.max(0.25, 0.45 - qq * 0.015);
-    const makeCurve = () => new TorusKnotCurve({ p: pp, q: qq, R: 1.0, r: torusMinorR });
-    const geom = estimateAndNormalizeTube({ makeCurve, closed: true, quality, radius: FIXED_ROPE_RADIUS, targetOuterRadius: 1.35, segments });
-    if (applyDeform && rng) {
-      applyRandomTransform(geom, rng);
-      if (rng() > 0.3) {
-        deformAlongNormal(geom, { amp: FIXED_ROPE_RADIUS * 0.15 * rng(), freq: 2 + rng() * 4, phase: rng() * Math.PI * 2 });
-      }
-    }
+    const rawCurve = new TorusKnotCurve({ p: pp, q: qq, R: 1.0, r: torusMinorR });
+    const geom = buildProcessedTube(rawCurve, { closed: true, targetOuterRadius: 1.35 });
+    if (applyDeform && rng) applyRandomRotation(geom, rng);
     return geom;
   }
 
   if (p.kind === 'curveExtras') {
     const hasCurve = Curves && typeof Curves[p.extrasName] === 'function';
-    const makeCurve = hasCurve ? () => new Curves[p.extrasName]() : p.fallback;
-    const geom = estimateAndNormalizeTube({ makeCurve, closed: true, quality, radius: FIXED_ROPE_RADIUS, targetOuterRadius: 1.35, segments });
-    if (applyDeform && rng) {
-      applyRandomTransform(geom, rng);
-    }
+    const rawCurve = hasCurve ? new Curves[p.extrasName]() : p.fallback();
+    const geom = buildProcessedTube(rawCurve, { closed: true, targetOuterRadius: 1.35 });
+    if (applyDeform && rng) applyRandomRotation(geom, rng);
     return geom;
   }
 
   if (p.kind === 'curve') {
-    const makeCurve = () => p.make(rng);
-    const geom = estimateAndNormalizeTube({ makeCurve, closed: true, quality, radius: FIXED_ROPE_RADIUS, targetOuterRadius: 1.35, segments });
-    if (applyDeform && rng) {
-      applyRandomTransform(geom, rng);
-    }
+    const rawCurve = p.make(rng);
+    const geom = buildProcessedTube(rawCurve, { closed: true, targetOuterRadius: 1.35 });
+    if (applyDeform && rng) applyRandomRotation(geom, rng);
     return geom;
   }
 
@@ -1150,7 +1331,7 @@ function buildGeometryForPreset(presetId, { rng, quality = 'mid', radius = 0.24,
     }
 
     const ropeColor = FIXED_ROPE_COLOR;
-    const mesh = createRopeMesh(curve, { radius: FIXED_ROPE_RADIUS, color: ropeColor, closed: true, tubularSegments: Math.max(280, tubularSegments), radialSegments });
+    const mesh = createRopeMesh(curve, { radius: DISPLAY_ROPE_RADIUS, color: ropeColor, closed: true, tubularSegments: Math.max(280, tubularSegments), radialSegments });
     const geom = mesh.geometry;
     if (mesh.material) mesh.material.dispose();
     geom.center();
@@ -1169,7 +1350,7 @@ function buildGeometryForPreset(presetId, { rng, quality = 'mid', radius = 0.24,
     else pool = hardPresets;
     
     const chosenId = pick(rng || Math.random, pool);
-    return buildGeometryForPreset(chosenId, { rng, quality, radius, applyDeform });
+    return buildGeometryForPreset(chosenId, { rng, quality, radius, applyDeform, deformStrength, slackness, segments });
   }
 
   if (p.kind === 'benchmarkMix') {
@@ -1183,11 +1364,11 @@ function buildGeometryForPreset(presetId, { rng, quality = 'mid', radius = 0.24,
     else if (r < easyPct + mediumPct) level = 1;
     else level = 2;
     
-    return buildGeometryForPreset(level === 0 ? 'benchmark_easy' : (level === 1 ? 'benchmark_medium' : 'benchmark_hard'), { rng, quality, radius, applyDeform });
+    return buildGeometryForPreset(level === 0 ? 'benchmark_easy' : (level === 1 ? 'benchmark_medium' : 'benchmark_hard'), { rng, quality, radius, applyDeform, deformStrength, slackness, segments });
   }
 
   // Fallback
-  return estimateAndNormalizeTube({ makeCurve: () => new CircleCurve({ radius: 1.0 }), closed: true, quality, radius: FIXED_ROPE_RADIUS, targetOuterRadius: 1.35, segments });
+  return estimateAndNormalizeTube({ makeCurve: () => new CircleCurve({ radius: 1.0 }), closed: true, quality, radius: DISPLAY_ROPE_RADIUS, targetOuterRadius: 1.35, segments });
 }
 
 // ============= Three.js Scene =============
@@ -1223,7 +1404,9 @@ function initThree() {
   renderer.setSize(w, h);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.35;
+  renderer.toneMappingExposure = 1.2;
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   viewEl.appendChild(renderer.domElement);
 
   controls = new OrbitControls(camera, renderer.domElement);
@@ -1231,22 +1414,53 @@ function initThree() {
   controls.dampingFactor = 0.06;
   controls.target.set(0, 0, 0);
 
-  // Enhanced lighting (from simple gallery)
-  scene.add(new THREE.AmbientLight(0xffffff, 1.05));
-  // Weak hemisphere light to simulate environment bounce (keep subtle)
-  const hemi = new THREE.HemisphereLight(0xffffff, 0x2a335a, 0.22);
+  // Lighting tuned for clearer depth/occlusion cues.
+  scene.add(new THREE.AmbientLight(0xffffff, 0.46));
+  const hemi = new THREE.HemisphereLight(0xffffff, 0x2a335a, 0.18);
   scene.add(hemi);
   
-  const dir = new THREE.DirectionalLight(0xffffff, 1.5);
+  const dir = new THREE.DirectionalLight(0xffffff, 1.95);
   dir.position.set(10, 18, 10);
+  dir.castShadow = true;
+  dir.shadow.mapSize.width = 2048;
+  dir.shadow.mapSize.height = 2048;
+  dir.shadow.camera.near = 0.1;
+  dir.shadow.camera.far = 80;
+  dir.shadow.camera.left = -18;
+  dir.shadow.camera.right = 18;
+  dir.shadow.camera.top = 18;
+  dir.shadow.camera.bottom = -18;
+  dir.shadow.bias = -0.0006;
   scene.add(dir);
 
-  const fill = new THREE.DirectionalLight(0xffffff, 0.8);
+  const fill = new THREE.DirectionalLight(0xffffff, 0.55);
   fill.position.set(-10, 5, -10);
   scene.add(fill);
 
+  const rim = new THREE.DirectionalLight(0xffffff, 0.42);
+  rim.position.set(0, 6, -14);
+  scene.add(rim);
+
+  const shadowPlane = new THREE.Mesh(
+    new THREE.PlaneGeometry(220, 220),
+    new THREE.ShadowMaterial({ opacity: 0.2 }),
+  );
+  shadowPlane.rotation.x = -Math.PI * 0.5;
+  shadowPlane.position.y = -1.22;
+  shadowPlane.receiveShadow = true;
+  scene.add(shadowPlane);
+
   const grid = new THREE.GridHelper(120, 60, 0x2a335a, 0x1a2040);
   grid.position.y = -1.2;
+  if (Array.isArray(grid.material)) {
+    grid.material.forEach((m) => {
+      m.transparent = true;
+      m.opacity = 0.35;
+    });
+  } else if (grid.material) {
+    grid.material.transparent = true;
+    grid.material.opacity = 0.35;
+  }
   scene.add(grid);
 
   scene.add(root);
@@ -1320,14 +1534,16 @@ function buildInstancedMesh(geometry, { count, cols, rng, layout, globalScale, i
 
   const material = new THREE.MeshStandardMaterial({
     color: 0xffffff,
-    roughness: 0.35,
-    metalness: 0.15,
+    roughness: 0.5,
+    metalness: 0.04,
     vertexColors: true,
-    emissive: new THREE.Color(0x111111),
-    emissiveIntensity: 0.2,
+    emissive: new THREE.Color(0x050505),
+    emissiveIntensity: 0.04,
   });
   
   const mesh = new THREE.InstancedMesh(geometry, material, count);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
   mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
   mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(count * 3), 3);
 
@@ -1411,11 +1627,11 @@ function buildInstancedMeshesLOD(geometryHigh, geometryLow, {
 
   const makeMaterial = () => new THREE.MeshStandardMaterial({
     color: 0xffffff,
-    roughness: 0.35,
-    metalness: 0.15,
+    roughness: 0.5,
+    metalness: 0.04,
     vertexColors: true,
-    emissive: new THREE.Color(0x111111),
-    emissiveIntensity: 0.2,
+    emissive: new THREE.Color(0x050505),
+    emissiveIntensity: 0.04,
   });
 
   const meshes = [];
@@ -1423,6 +1639,8 @@ function buildInstancedMeshesLOD(geometryHigh, geometryLow, {
   if (matricesHigh.length) {
     const mat = makeMaterial();
     const meshH = new THREE.InstancedMesh(geometryHigh, mat, matricesHigh.length);
+    meshH.castShadow = true;
+    meshH.receiveShadow = true;
     meshH.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     meshH.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(matricesHigh.length * 3), 3);
     for (let i = 0; i < matricesHigh.length; i++) {
@@ -1437,6 +1655,8 @@ function buildInstancedMeshesLOD(geometryHigh, geometryLow, {
   if (matricesLow.length) {
     const mat = makeMaterial();
     const meshL = new THREE.InstancedMesh(geometryLow, mat, matricesLow.length);
+    meshL.castShadow = true;
+    meshL.receiveShadow = true;
     meshL.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     meshL.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(matricesLow.length * 3), 3);
     for (let i = 0; i < matricesLow.length; i++) {
@@ -1481,12 +1701,14 @@ async function regenerate() {
   const presetId = document.getElementById('preset')?.value || 'trefoil';
   const presetName = PRESETS[presetId]?.name || presetId;
 
-  const count = parsePositiveInt(document.getElementById('count')?.value, 16, { min: 1, max: 500 });
+  const count = parsePositiveInt(document.getElementById('count')?.value, 1, { min: 1, max: 500 });
   const cols = parsePositiveInt(document.getElementById('cols')?.value, 4, { min: 1, max: 50 });
   const quality = document.getElementById('quality')?.value || 'mid';
   const layout = document.getElementById('layout')?.value || 'grid';
-  const radius = FIXED_ROPE_RADIUS;
+  const radius = DISPLAY_ROPE_RADIUS;
   const globalScale = parseNumber(document.getElementById('scale')?.value, 1.0, { min: 0.3, max: 3.0 });
+  const slackness = parseNumber(document.getElementById('slackness')?.value, 0.4, { min: 0, max: 1 });
+  const deformStrength = parseNumber(document.getElementById('deformStrength')?.value, 0.3, { min: 0, max: 1 });
 
   disposeCurrent();
 
@@ -1497,7 +1719,7 @@ async function regenerate() {
       const perType = Math.max(1, Math.floor(count / allKeys.length));
       let total = 0;
       
-      const firstGeom = buildGeometryForPreset(allKeys[0], { rng, quality, radius });
+      const firstGeom = buildGeometryForPreset(allKeys[0], { rng, quality, radius, deformStrength, slackness });
       const spacing = firstGeom ? computeSpacingFromGeometry({ geometry: firstGeom, layout: 'grid', globalScale }) : { baseSpacing: 9.0, jitter: 0.0 };
       if (firstGeom) firstGeom.dispose();
 
@@ -1505,7 +1727,7 @@ async function regenerate() {
         const n = Math.min(perType, count - total);
         if (n <= 0) break;
         
-        const geometry = buildGeometryForPreset(k, { rng, quality, radius });
+        const geometry = buildGeometryForPreset(k, { rng, quality, radius, deformStrength, slackness });
         if (!geometry) continue;
         
         const mesh = buildInstancedMesh(geometry, { count: n, cols: Math.min(cols, n), rng, layout: 'grid', globalScale, instanceOffset: total, totalCount: count, spacing });
@@ -1526,7 +1748,15 @@ async function regenerate() {
 
     // Spacing should reflect the visible (high) geometry.
     const spacingGeomRng = makeRng(`${seedStr}|${presetId}|spacing`);
-    const firstGeom = buildGeometryForPreset(presetId, { rng: spacingGeomRng, quality, radius, applyDeform: count === 1, segments: { tubularSegments: 300, radialSegments: 16 } });
+    const firstGeom = buildGeometryForPreset(presetId, {
+      rng: spacingGeomRng,
+      quality,
+      radius,
+      applyDeform: true,
+      deformStrength,
+      slackness,
+      segments: { tubularSegments: 300, radialSegments: 16 },
+    });
     const spacing = computeSpacingFromGeometry({ geometry: firstGeom, layout, globalScale });
     firstGeom.dispose();
 
@@ -1539,8 +1769,24 @@ async function regenerate() {
 
       // Use the SAME seeded RNG stream for both LOD geometries so shapes match.
       const geomSeed = `${seedStr}|${presetId}|v=${v}`;
-      const geometryHigh = buildGeometryForPreset(presetId, { rng: makeRng(geomSeed), quality, radius, applyDeform: count === 1, segments: segHigh });
-      const geometryLow = count > 1 ? buildGeometryForPreset(presetId, { rng: makeRng(geomSeed), quality, radius, applyDeform: false, segments: segLow }) : null;
+      const geometryHigh = buildGeometryForPreset(presetId, {
+        rng: makeRng(geomSeed),
+        quality,
+        radius,
+        applyDeform: true,
+        deformStrength,
+        slackness,
+        segments: segHigh,
+      });
+      const geometryLow = count > 1 ? buildGeometryForPreset(presetId, {
+        rng: makeRng(geomSeed),
+        quality,
+        radius,
+        applyDeform: true,
+        deformStrength,
+        slackness,
+        segments: segLow,
+      }) : null;
       if (!geometryHigh) continue;
 
       if (count > 1 && geometryLow) {
@@ -1575,9 +1821,10 @@ async function regenerate() {
 function exportDataset() {
   const seedStr = document.getElementById('seed')?.value || 'knot-gallery-v1';
   const presetId = document.getElementById('preset')?.value || 'trefoil';
-  const count = parsePositiveInt(document.getElementById('count')?.value, 16, { min: 1, max: 500 });
-  const deformStrength = clamp(parseNumber(document.getElementById('deform')?.value, 0.25, { min: 0, max: 1 }), 0, 1);
-  const tubeRadius = FIXED_ROPE_RADIUS;
+  const count = parsePositiveInt(document.getElementById('count')?.value, 1, { min: 1, max: 500 });
+  const deformStrength = clamp(parseNumber(document.getElementById('deformStrength')?.value, 0.3, { min: 0, max: 1 }), 0, 1);
+  const slackness = clamp(parseNumber(document.getElementById('slackness')?.value, 0.4, { min: 0, max: 1 }), 0, 1);
+  const tubeRadius = DISPLAY_ROPE_RADIUS;
   const cameraPosition = camera ? [camera.position.x, camera.position.y, camera.position.z] : [0, 3.2, 6.2];
   const dataset = {
     version: 1,
@@ -1596,6 +1843,7 @@ function exportDataset() {
     const unified = computeSingleClosedLoopDifficulty({
       knotType: presetId,
       deformStrength,
+      slackness,
       cameraPosition,
       tubeRadius,
     });
@@ -1610,6 +1858,7 @@ function exportDataset() {
       isUnknot: PRESETS[presetId]?.isUnknot || false,
       isLink: PRESETS[presetId]?.isLink || false,
       isDeceptive: PRESETS[presetId]?.isDeceptive || false,
+      slackness,
     });
   }
 
@@ -1625,13 +1874,107 @@ function exportDataset() {
   URL.revokeObjectURL(url);
 }
 
+function downloadDataUrl(dataUrl, filename) {
+  const a = document.createElement('a');
+  a.href = dataUrl;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
+function makeCaptureBaseName() {
+  const presetId = document.getElementById('preset')?.value || 'trefoil';
+  const seedStrRaw = document.getElementById('seed')?.value || 'default';
+  const seedStr = String(seedStrRaw).replace(/[^a-zA-Z0-9_-]/g, '_');
+  const slackness = clamp(parseNumber(document.getElementById('slackness')?.value, 0.4, { min: 0, max: 1 }), 0, 1);
+  return { presetId, seedStr, slackness };
+}
+
+function captureCurrentPng() {
+  if (!renderer || !scene || !camera) return;
+  const { presetId, seedStr, slackness } = makeCaptureBaseName();
+  renderer.render(scene, camera);
+  const filename = `knot_${presetId}_s${seedStr}_slack${slackness.toFixed(2)}_current.png`;
+  downloadDataUrl(renderer.domElement.toDataURL('image/png'), filename);
+}
+
+async function batchCapture() {
+  if (!renderer || !scene || !camera) return;
+
+  const { presetId, seedStr, slackness } = makeCaptureBaseName();
+  const deformStrength = clamp(parseNumber(document.getElementById('deformStrength')?.value, 0.3, { min: 0, max: 1 }), 0, 1);
+  const imageMeta = [];
+
+  const oldPos = camera.position.clone();
+  const oldTarget = controls ? controls.target.clone() : new THREE.Vector3(0, 0, 0);
+  const oldFov = camera.fov;
+
+  try {
+    for (const angle of STANDARD_CAMERA_ANGLES) {
+      camera.position.set(...angle.pos);
+      if (controls) controls.target.set(0, 0, 0);
+      camera.lookAt(0, 0, 0);
+      camera.updateProjectionMatrix();
+      if (controls) controls.update();
+      renderer.render(scene, camera);
+
+      const filename = `knot_${presetId}_s${seedStr}_slack${slackness.toFixed(2)}_${angle.name}.png`;
+      downloadDataUrl(renderer.domElement.toDataURL('image/png'), filename);
+      imageMeta.push({ filename, cameraAngle: angle.name, cameraPos: angle.pos });
+      await new Promise((resolve) => setTimeout(resolve, 150));
+    }
+  } finally {
+    camera.position.copy(oldPos);
+    camera.fov = oldFov;
+    if (controls) controls.target.copy(oldTarget);
+    camera.lookAt(oldTarget);
+    camera.updateProjectionMatrix();
+    if (controls) controls.update();
+    renderer.render(scene, camera);
+  }
+
+  const knotEntry = KNOT_TYPE_REGISTRY?.[presetId] || {};
+  const metadata = {
+    version: '1.1',
+    knotType: presetId,
+    topologicalId: knotEntry.topologicalId || null,
+    isKnot: !(knotEntry.isUnknot || knotEntry.isLink),
+    isUnknot: knotEntry.topologicalId === 'unknot' || false,
+    isDeceptive: knotEntry.isDeceptive || false,
+    isLoose: slackness > 0.55 && !(knotEntry.isUnknot || knotEntry.isLink),
+    crossingNumber: knotEntry.crossingNumber ?? null,
+    slackness,
+    deformStrength,
+    seed: seedStr,
+    difficulty: getBucketTopology(presetId),
+    bucket_topology: getBucketTopology(presetId),
+    bucket_saliency: getBucketSaliency(slackness),
+    trap_type: getTrapType(presetId, slackness),
+    images: imageMeta,
+    groundTruth: {
+      task_knotted_or_not: (knotEntry.isUnknot || knotEntry.isLink) ? 'unknotted' : 'knotted',
+      task_knot_family: knotEntry.family || 'unknown',
+    },
+  };
+
+  const metaBlob = new Blob([JSON.stringify(metadata, null, 2)], { type: 'application/json' });
+  const metaUrl = URL.createObjectURL(metaBlob);
+  downloadDataUrl(metaUrl, `knot_${presetId}_s${seedStr}_metadata.json`);
+  URL.revokeObjectURL(metaUrl);
+}
+
 // ============= Event Listeners =============
 
 document.getElementById('btnGenerate')?.addEventListener('click', regenerate);
 document.getElementById('btnExport')?.addEventListener('click', exportDataset);
+document.getElementById('btnCapture')?.addEventListener('click', captureCurrentPng);
+document.getElementById('btnBatchCapture')?.addEventListener('click', () => {
+  batchCapture().catch((err) => console.error('[batchCapture] failed:', err));
+});
 
 // Slider auto-regenerate
-['chainR', 'chainNumLinks', 'chainOffsetY', 'chainSpacing', 'borromeanR', 'borromeanRatio', 'borromeanYellowY', 'borromeanBlueY', 'kinkCount', 'kinkAmplitude'].forEach(id => {
+['deformStrength', 'slackness', 'chainR', 'chainNumLinks', 'chainOffsetY', 'chainSpacing', 'borromeanR', 'borromeanRatio', 'borromeanYellowY', 'borromeanBlueY', 'kinkCount', 'kinkAmplitude'].forEach(id => {
   document.getElementById(id)?.addEventListener('input', regenerate);
 });
 

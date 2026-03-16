@@ -25,7 +25,13 @@ import {
   isConfusingPair,
 } from './knot-type-registry.js';
 import { KNOWN_GAUSS_CODES } from './gauss-code-generator.js';
-import { computePairDifficulty, computeViewAngleDiff as computeViewAngleDiffUnified } from './difficulty-controller.js';
+import {
+  computePairDifficulty,
+  computeViewAngleDiff as computeViewAngleDiffUnified,
+  getBucketTopology,
+  getBucketSaliency,
+  getTrapType,
+} from './difficulty-controller.js';
 
 // ============= Seeded RNG =============
 
@@ -63,15 +69,27 @@ function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
-// 针对特定 knot 类型收紧形变，避免尖刺/穿模
-function clampDeformByKnotType(knotType, deform) {
-  const caps = {
-    figure8: 0.20,       // 降低 figure-8 形变，避免毛刺
+// 针对特定 knot 类型收紧参数，避免尖刺/穿模或视觉彻底退化
+function clampParamsByKnotType(knotType, params) {
+  const slacknessCaps = {
+    unknot: 0.3,
+    twisted_ring: 0.3,
+    spiral_disk: 0.2,
+    figure8: 0.65,
+    trefoil: 0.70,
+    torus_2_5: 0.75,
+  };
+  const deformCaps = {
+    figure8: 0.20,
     spiral_disk: 0.28,
     twisted_ring: 0.40,
   };
-  const cap = caps[knotType];
-  return cap !== undefined ? Math.min(deform, cap) : deform;
+
+  return {
+    ...params,
+    slackness: Math.min(params.slackness, slacknessCaps[knotType] ?? 0.80),
+    deformStrength: Math.min(params.deformStrength, deformCaps[knotType] ?? 1.0),
+  };
 }
 
 function pick(rng, arr) {
@@ -156,6 +174,10 @@ function computeViewAngleDiff(posA, posB) {
  * @property {string} knotType - 绳结类型 key
  * @property {number} seed - RNG seed
  * @property {number} deformStrength - 变形强度 (0-1)
+ * @property {number} slackness - 松紧度 (0-1)
+ * @property {string} bucket_topology - 拓扑分桶 (low|mid|high)
+ * @property {string} bucket_saliency - 显著度分桶 (tight|medium|loose)
+ * @property {string|null} trap_type - 陷阱类型
  * @property {number[]} cameraPosition - 相机位置 [x, y, z]
  * @property {number[]} cameraTarget - 相机目标 [x, y, z]
  * @property {number} cameraFov - 相机视场角
@@ -203,20 +225,27 @@ function resolveGaussCode(knotType) {
 export function generateRandomImageParams(rng, knotType, constraints = {}) {
   const {
     deformRange = [0.1, 0.5],   // 上限收紧，减少过度扰动导致的穿模
+    slacknessRange = [0.0, 0.80],
     fovRange = [35, 55],
   } = constraints;
   
   const seed = Math.floor(rng() * 1000000);
+  const clampedGeomParams = clampParamsByKnotType(knotType, {
+    deformStrength: randRange(rng, deformRange[0], deformRange[1]),
+    slackness: randRange(rng, slacknessRange[0], slacknessRange[1]),
+  });
+  const slackness = clampedGeomParams.slackness;
     
     return {
     knotType,
     seed,
     
     // Geometry Deformation（核心随机因素）
-    deformStrength: clampDeformByKnotType(
-      knotType,
-      randRange(rng, deformRange[0], deformRange[1])
-    ),
+    deformStrength: clampedGeomParams.deformStrength,
+    slackness,
+    bucket_topology: getBucketTopology(knotType),
+    bucket_saliency: getBucketSaliency(slackness),
+    trap_type: getTrapType(knotType, slackness),
     
     // Camera（保持完全随机视角）
     cameraPosition: randomCameraPosition(rng),
@@ -249,13 +278,23 @@ export function generateSimilarImageParams(rng, knotType, referenceParams, simil
   
   // 基于参考参数，但保持固定材质与粗细
   const newParams = generateRandomImageParams(rng, knotType);
+  const blendedDeform = blend(referenceParams.deformStrength, newParams.deformStrength, diff);
+  const blendedSlackness = blend(referenceParams.slackness ?? 0, newParams.slackness ?? 0, diff);
+  const clampedGeomParams = clampParamsByKnotType(knotType, {
+    deformStrength: blendedDeform,
+    slackness: blendedSlackness,
+  });
     
     return {
     ...newParams,
     knotType,
     
     // 混合：保持大部分相似
-    deformStrength: blend(referenceParams.deformStrength, newParams.deformStrength, diff),
+    deformStrength: clampedGeomParams.deformStrength,
+    slackness: clampedGeomParams.slackness,
+    bucket_topology: getBucketTopology(knotType),
+    bucket_saliency: getBucketSaliency(clampedGeomParams.slackness),
+    trap_type: getTrapType(knotType, clampedGeomParams.slackness),
     
     // 相机位置：只做小幅调整
     cameraPosition: referenceParams.cameraPosition.map((v, i) => 
@@ -313,6 +352,8 @@ export function generatePositivePair(rng, targetDifficulty = 'medium', options =
   const {
     allowedTypes = null,  // 如果指定，只从这些类型中选择
     includeDeceptive = true,
+    imageConstraintsA = null,
+    imageConstraintsB = null,
   } = options;
   
   // 1. 选择一个拓扑类
@@ -364,23 +405,27 @@ export function generatePositivePair(rng, targetDifficulty = 'medium', options =
   
   // 4. 生成 ImageParams
   let imageA, imageB;
+  const mergeConstraints = (base, extra) => ({ ...(base || {}), ...(extra || {}) });
   
   if (targetDifficulty === 'easy') {
     // Easy：参数相似
-    imageA = generateRandomImageParams(rng, knotTypeA);
+    imageA = generateRandomImageParams(rng, knotTypeA, imageConstraintsA || {});
     imageB = generateSimilarImageParams(rng, knotTypeB, imageA, 0.75);
+    if (imageConstraintsB) {
+      imageB = generateRandomImageParams(rng, knotTypeB, imageConstraintsB);
+    }
   } else if (targetDifficulty === 'hard') {
     // Hard：参数差异大
     imageA = generateRandomImageParams(rng, knotTypeA, {
-      deformRange: [0.1, 0.4],
+      ...mergeConstraints({ deformRange: [0.1, 0.4] }, imageConstraintsA),
     });
     imageB = generateRandomImageParams(rng, knotTypeB, {
-      deformRange: [0.5, 0.8],
+      ...mergeConstraints({ deformRange: [0.5, 0.8] }, imageConstraintsB),
     });
-        } else {
+  } else {
     // Medium：随机
-    imageA = generateRandomImageParams(rng, knotTypeA);
-    imageB = generateRandomImageParams(rng, knotTypeB);
+    imageA = generateRandomImageParams(rng, knotTypeA, imageConstraintsA || {});
+    imageB = generateRandomImageParams(rng, knotTypeB, imageConstraintsB || {});
   }
   // 强制形变差异和不同 seed
   ensureDeformGap(imageA, imageB, rng, 0.18);
@@ -417,6 +462,8 @@ export function generateNegativePair(rng, targetDifficulty = 'medium', options =
   const {
     allowedTypes = null,
     includeDeceptive = true,
+    imageConstraintsA = null,
+    imageConstraintsB = null,
   } = options;
   
   let knotTypeA, knotTypeB;
@@ -475,20 +522,24 @@ export function generateNegativePair(rng, targetDifficulty = 'medium', options =
     
   // 生成 ImageParams
   let imageA, imageB;
+  const mergeConstraints = (base, extra) => ({ ...(base || {}), ...(extra || {}) });
   
   if (targetDifficulty === 'easy') {
     // Easy：视觉差异大
-    imageA = generateRandomImageParams(rng, knotTypeA);
-    imageB = generateRandomImageParams(rng, knotTypeB);
+    imageA = generateRandomImageParams(rng, knotTypeA, imageConstraintsA || {});
+    imageB = generateRandomImageParams(rng, knotTypeB, imageConstraintsB || {});
   } else if (targetDifficulty === 'hard') {
     // Hard：视觉尽量相似
-    imageA = generateRandomImageParams(rng, knotTypeA);
+    imageA = generateRandomImageParams(rng, knotTypeA, imageConstraintsA || {});
     imageB = generateSimilarImageParams(rng, knotTypeB, imageA, 0.6);
+    if (imageConstraintsB) {
+      imageB = generateRandomImageParams(rng, knotTypeB, imageConstraintsB);
+    }
   } else {
     // Medium：随机
-    imageA = generateRandomImageParams(rng, knotTypeA);
-    imageB = generateRandomImageParams(rng, knotTypeB);
-    }
+    imageA = generateRandomImageParams(rng, knotTypeA, mergeConstraints({}, imageConstraintsA));
+    imageB = generateRandomImageParams(rng, knotTypeB, mergeConstraints({}, imageConstraintsB));
+  }
     
   // 计算评分
   const difficulty = computePairDifficulty(imageA, imageB, false, topologicalIdA, topologicalIdB);
@@ -547,6 +598,26 @@ function sampleDifficulty(rng, distribution) {
   return 'hard';
   }
 
+const TOPOLOGY_BUCKETS = ['low', 'mid', 'high'];
+const SALIENCY_BUCKETS = ['tight', 'medium', 'loose'];
+
+function slacknessRangeForBucket(bucket) {
+  if (bucket === 'tight') return [0.0, 0.25];
+  if (bucket === 'medium') return [0.26, 0.60];
+  return [0.61, 0.80];
+}
+
+function getKnotTypesByTopologyBucket(bucket, { allowedTypes = null, includeDeceptive = true } = {}) {
+  return Object.entries(KNOT_TYPE_REGISTRY)
+    .filter(([key, entry]) => {
+      if (!entry || entry.isLink) return false;
+      if (allowedTypes && !allowedTypes.includes(key)) return false;
+      if (!includeDeceptive && entry.isDeceptive) return false;
+      return getBucketTopology(key) === bucket;
+    })
+    .map(([key]) => key);
+}
+
   /**
  * 生成完整的 Invariance 数据集
  * @param {DatasetConfig} config
@@ -566,8 +637,46 @@ export function generateInvarianceDataset(config) {
   
   const numPositive = Math.round(numPairs * positiveRatio);
   const numNegative = numPairs - numPositive;
+  const TARGET_PER_BUCKET = Math.floor(numPairs / (TOPOLOGY_BUCKETS.length * SALIENCY_BUCKETS.length));
+  const bucketCounts = {};
+  TOPOLOGY_BUCKETS.forEach((t) => SALIENCY_BUCKETS.forEach((s) => {
+    bucketCounts[`${t}_${s}`] = 0;
+  }));
+
+  function pickUndersampledBucket() {
+    const entries = Object.entries(bucketCounts).sort((a, b) => a[1] - b[1]);
+    const underTarget = entries.find(([, count]) => count < TARGET_PER_BUCKET);
+    return (underTarget || entries[0])[0];
+  }
+
+  function generatePairForBucket(labelEquivalent, difficulty, targetBucketKey) {
+    const [topologyBucket, saliencyBucket] = String(targetBucketKey).split('_');
+    const bucketAllowedTypes = getKnotTypesByTopologyBucket(topologyBucket, { allowedTypes, includeDeceptive });
+    const imageConstraintsA = { slacknessRange: slacknessRangeForBucket(saliencyBucket) };
+
+    const pairOptions = {
+      allowedTypes: bucketAllowedTypes.length > 0 ? bucketAllowedTypes : allowedTypes,
+      includeDeceptive,
+      imageConstraintsA,
+    };
+
+    let pair = null;
+    for (let attempt = 0; attempt < 10; attempt++) {
+      pair = labelEquivalent
+        ? generatePositivePair(rng, difficulty, pairOptions)
+        : generateNegativePair(rng, difficulty, pairOptions);
+
+      const t = pair?.imageA?.bucket_topology || getBucketTopology(pair?.imageA?.knotType);
+      const s = pair?.imageA?.bucket_saliency || getBucketSaliency(pair?.imageA?.slackness ?? 0);
+      if (t === topologyBucket && s === saliencyBucket) {
+        return pair;
+      }
+    }
+
+    return pair;
+  }
   
-    const pairs = [];
+  const pairs = [];
   const statistics = {
     total: numPairs,
     positive: numPositive,
@@ -575,12 +684,14 @@ export function generateInvarianceDataset(config) {
     byDifficulty: { easy: 0, medium: 0, hard: 0 },
     byKnotType: {},
     byTopologicalId: {},
+    byBucket: bucketCounts,
   };
         
   // 生成 Positive Pairs
   for (let i = 0; i < numPositive; i++) {
     const difficulty = sampleDifficulty(rng, difficultyDistribution);
-    const pair = generatePositivePair(rng, difficulty, { allowedTypes, includeDeceptive });
+    const targetBucket = pickUndersampledBucket();
+    const pair = generatePairForBucket(true, difficulty, targetBucket);
     pairs.push(pair);
     
     // 统计
@@ -588,12 +699,15 @@ export function generateInvarianceDataset(config) {
     statistics.byKnotType[pair.imageA.knotType] = (statistics.byKnotType[pair.imageA.knotType] || 0) + 1;
     statistics.byKnotType[pair.imageB.knotType] = (statistics.byKnotType[pair.imageB.knotType] || 0) + 1;
     statistics.byTopologicalId[pair.topologicalIdA] = (statistics.byTopologicalId[pair.topologicalIdA] || 0) + 1;
+    const bk = `${pair.imageA.bucket_topology || getBucketTopology(pair.imageA.knotType)}_${pair.imageA.bucket_saliency || getBucketSaliency(pair.imageA.slackness ?? 0)}`;
+    if (bucketCounts[bk] !== undefined) bucketCounts[bk] += 1;
   }
   
   // 生成 Negative Pairs
   for (let i = 0; i < numNegative; i++) {
     const difficulty = sampleDifficulty(rng, difficultyDistribution);
-    const pair = generateNegativePair(rng, difficulty, { allowedTypes, includeDeceptive });
+    const targetBucket = pickUndersampledBucket();
+    const pair = generatePairForBucket(false, difficulty, targetBucket);
     pairs.push(pair);
     
     // 统计
@@ -602,6 +716,8 @@ export function generateInvarianceDataset(config) {
     statistics.byKnotType[pair.imageB.knotType] = (statistics.byKnotType[pair.imageB.knotType] || 0) + 1;
     statistics.byTopologicalId[pair.topologicalIdA] = (statistics.byTopologicalId[pair.topologicalIdA] || 0) + 1;
     statistics.byTopologicalId[pair.topologicalIdB] = (statistics.byTopologicalId[pair.topologicalIdB] || 0) + 1;
+    const bk = `${pair.imageA.bucket_topology || getBucketTopology(pair.imageA.knotType)}_${pair.imageA.bucket_saliency || getBucketSaliency(pair.imageA.slackness ?? 0)}`;
+    if (bucketCounts[bk] !== undefined) bucketCounts[bk] += 1;
   }
   
   // 打乱顺序
@@ -614,6 +730,23 @@ export function generateInvarianceDataset(config) {
     pair.imagePathA = `${pairId}_1.png`;
     pair.imagePathB = `${pairId}_2.png`;
     });
+
+  console.group('=== Dataset Bucket Distribution ===');
+  console.table(
+    TOPOLOGY_BUCKETS.flatMap((t) =>
+      SALIENCY_BUCKETS.map((s) => ({
+        topology: t,
+        saliency: s,
+        count: bucketCounts[`${t}_${s}`],
+        trap_loose_knot: pairs.filter((p) =>
+          p.imageA.bucket_topology === t &&
+          p.imageA.bucket_saliency === s &&
+          p.imageA.trap_type === 'loose_knot'
+        ).length,
+      }))
+    )
+  );
+  console.groupEnd();
     
   return {
     pairs: shuffledPairs,

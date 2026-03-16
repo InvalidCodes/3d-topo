@@ -11,7 +11,7 @@
  * - factors: object of normalized sub-scores (generally [0,1])
  */
 
-import { getCrossingNumber, isDeceptiveKnot, isConfusingPair } from './knot-type-registry.js';
+import { KNOT_TYPE_REGISTRY, getCrossingNumber, isDeceptiveKnot, isConfusingPair } from './knot-type-registry.js';
 
 // ============= Helpers =============
 
@@ -20,6 +20,52 @@ function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 function scoreToLevel(score) {
   const s = clamp(score, 0, 1);
   return s < 0.35 ? 'easy' : (s < 0.65 ? 'medium' : 'hard');
+}
+
+// ============= 难度分桶（正交维度）=============
+
+/**
+ * Factor A: 拓扑复杂度（基于交叉数）
+ */
+export function getBucketTopology(knotType) {
+  const c = getCrossingNumber(knotType) ?? 0;
+  if (c <= 3) return 'low';
+  if (c <= 6) return 'mid';
+  return 'high';
+}
+
+/**
+ * Factor B: 视觉显著度（基于 slackness）
+ * slackness 越高 -> crossing 越不明显 -> 越难
+ */
+export function getBucketSaliency(slackness) {
+  const s = clamp(Number(slackness) || 0, 0, 1);
+  if (s <= 0.25) return 'tight';
+  if (s <= 0.60) return 'medium';
+  return 'loose';
+}
+
+/**
+ * Factor C: 认知陷阱类型
+ */
+export const TRAP_TYPES = {
+  NONE: null,
+  LOOSE_KNOT: 'loose_knot',
+  DECEPTIVE_UNKNOT: 'deceptive_unknot',
+  VIEW_COLLAPSE: 'view_collapse',
+};
+
+export function getTrapType(knotType, slackness) {
+  const entry = KNOT_TYPE_REGISTRY[knotType];
+  if (!entry) return TRAP_TYPES.NONE;
+
+  if (!entry.isLink && !entry.isUnknot && (Number(slackness) || 0) > 0.55) {
+    return TRAP_TYPES.LOOSE_KNOT;
+  }
+  if (entry.isDeceptive) {
+    return TRAP_TYPES.DECEPTIVE_UNKNOT;
+  }
+  return TRAP_TYPES.NONE;
 }
 
 /**

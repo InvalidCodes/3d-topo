@@ -8,6 +8,7 @@
 import * as THREE from 'three';
 import * as CurveExtras from 'three/addons/curves/CurveExtras.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { processCenterline } from './centerline-pipeline.js';
 
 const Curves = CurveExtras.Curves || CurveExtras;
 
@@ -125,7 +126,7 @@ class SpiralLoopCurve extends THREE.Curve {
 
     // Return path: add one more turn while diving below z=0
     this.returnEndAngle = this.endAngle + Math.PI * 2; // one extra full turn
-    this.returnMidZ = -(this.tubeRadius * 3.5); // dip well below first layer for clearance
+    this.returnMidZ = -(this.tubeRadius * 5.5); // dip well below first layer for clearance
 
     // Phase distribution (forward spiral / return helix)
     this.tForward = 0.65;
@@ -732,38 +733,51 @@ export function buildGeometryForKnotType(knotType, options = {}) {
     quality = 'high',
     radius = 0.15,
     deformStrength = 0.3,
+    slackness = 0,
     anisotropicScale = [1, 1, 1],
   } = options;
   
   const localRng = rng || makeRng(String(Date.now()));
   const tubeRadius = radius * 0.85;
+  const buildProcessedTube = (rawCurve, { closed = true, targetOuterRadius = 1.35, sampleN = 300 } = {}) => {
+    const processedCurve = processCenterline(rawCurve, {
+      rng: localRng,
+      deformStrength,
+      slackness,
+      tubeRadius,
+      sampleN,
+      closed,
+      knotType,
+    });
+
+    const { tubularSegments, radialSegments } = tubeQualityParams(quality);
+    const geom = new THREE.TubeGeometry(processedCurve, tubularSegments, tubeRadius, radialSegments, closed);
+    geom.center();
+    geom.computeBoundingSphere();
+    const sNorm = geom.boundingSphere?.radius > 1e-6 ? (targetOuterRadius / geom.boundingSphere.radius) : 1.0;
+    geom.scale(sNorm, sNorm, sNorm);
+    geom.computeBoundingSphere();
+    if (geom.attributes.normal) geom.normalizeNormals();
+    return geom;
+  };
   
   let geometry = null;
   
   switch (knotType) {
     case 'unknot':
-      geometry = estimateAndNormalizeTube({
-        makeCurve: () => new CircleCurve({ radius: 1.0 }),
-        closed: true,
-        quality,
-        radius: tubeRadius,
-        targetOuterRadius: 1.35,
-      });
+      geometry = buildProcessedTube(new CircleCurve({ radius: 1.0 }), { closed: true, targetOuterRadius: 1.35, sampleN: 300 });
       break;
       
     case 'twisted_ring':
-      geometry = estimateAndNormalizeTube({
-        makeCurve: () => new TwistedRingCurve({
+      geometry = buildProcessedTube(
+        new TwistedRingCurve({
           R: 1.0,
           twist: 2 + Math.floor(localRng() * 5),
           wobble: 0.18 + localRng() * 0.18,
           height: 0.3 + localRng() * 0.25,
         }),
-        closed: true,
-        quality,
-        radius: tubeRadius,
-        targetOuterRadius: 1.35,
-      });
+        { closed: true, targetOuterRadius: 1.35, sampleN: 300 }
+      );
       break;
       
     case 'spiral_disk':
@@ -794,78 +808,36 @@ export function buildGeometryForKnotType(knotType, options = {}) {
       break;
       
     case 'trefoil':
-      geometry = estimateAndNormalizeTube({
-        makeCurve: () => new TorusKnotCurve({ p: 2, q: 3, R: 1.0, r: 0.4 }),
-        closed: true,
-        quality,
-        radius: tubeRadius,
-        targetOuterRadius: 1.35,
-      });
+      geometry = buildProcessedTube(new TorusKnotCurve({ p: 2, q: 3, R: 1.0, r: 0.4 }), { closed: true, targetOuterRadius: 1.35, sampleN: 300 });
       break;
       
     case 'figure8': {
       const hasCurve = Curves && typeof Curves['FigureEightPolynomialKnot'] === 'function';
-      const makeCurve = hasCurve
-        ? () => new Curves['FigureEightPolynomialKnot']()
-        : () => new TorusKnotCurve({ p: 3, q: 4, R: 1.0, r: 0.35 });
-      geometry = estimateAndNormalizeTube({
-        makeCurve,
-        closed: true,
-        quality,
-        radius: tubeRadius,
-        targetOuterRadius: 1.35,
-      });
+      const rawCurve = hasCurve
+        ? new Curves['FigureEightPolynomialKnot']()
+        : new TorusKnotCurve({ p: 3, q: 4, R: 1.0, r: 0.35 });
+      geometry = buildProcessedTube(rawCurve, { closed: true, targetOuterRadius: 1.35, sampleN: 300 });
       break;
     }
       
     case 'torus_2_5':
-      geometry = estimateAndNormalizeTube({
-        makeCurve: () => new TorusKnotCurve({ p: 2, q: 5, R: 1.0, r: 0.38 }),
-        closed: true,
-        quality,
-        radius: tubeRadius,
-        targetOuterRadius: 1.35,
-      });
+      geometry = buildProcessedTube(new TorusKnotCurve({ p: 2, q: 5, R: 1.0, r: 0.38 }), { closed: true, targetOuterRadius: 1.35, sampleN: 300 });
       break;
       
     case 'torus_2_7':
-      geometry = estimateAndNormalizeTube({
-        makeCurve: () => new TorusKnotCurve({ p: 2, q: 7, R: 1.0, r: 0.35 }),
-        closed: true,
-        quality,
-        radius: tubeRadius,
-        targetOuterRadius: 1.35,
-      });
+      geometry = buildProcessedTube(new TorusKnotCurve({ p: 2, q: 7, R: 1.0, r: 0.35 }), { closed: true, targetOuterRadius: 1.35, sampleN: 300 });
       break;
       
     case 'torus_2_9':
-      geometry = estimateAndNormalizeTube({
-        makeCurve: () => new TorusKnotCurve({ p: 2, q: 9, R: 1.0, r: 0.32 }),
-        closed: true,
-        quality,
-        radius: tubeRadius,
-        targetOuterRadius: 1.35,
-      });
+      geometry = buildProcessedTube(new TorusKnotCurve({ p: 2, q: 9, R: 1.0, r: 0.32 }), { closed: true, targetOuterRadius: 1.35, sampleN: 300 });
       break;
       
     case 'torus_3_4':
-      geometry = estimateAndNormalizeTube({
-        makeCurve: () => new TorusKnotCurve({ p: 3, q: 4, R: 1.0, r: 0.35 }),
-        closed: true,
-        quality,
-        radius: tubeRadius,
-        targetOuterRadius: 1.35,
-      });
+      geometry = buildProcessedTube(new TorusKnotCurve({ p: 3, q: 4, R: 1.0, r: 0.35 }), { closed: true, targetOuterRadius: 1.35, sampleN: 300 });
       break;
       
     case 'torus_3_5':
-      geometry = estimateAndNormalizeTube({
-        makeCurve: () => new TorusKnotCurve({ p: 3, q: 5, R: 1.0, r: 0.32 }),
-        closed: true,
-        quality,
-        radius: tubeRadius,
-        targetOuterRadius: 1.35,
-      });
+      geometry = buildProcessedTube(new TorusKnotCurve({ p: 3, q: 5, R: 1.0, r: 0.32 }), { closed: true, targetOuterRadius: 1.35, sampleN: 300 });
       break;
       
     case 'hopf_link':
@@ -886,13 +858,7 @@ export function buildGeometryForKnotType(knotType, options = {}) {
       
     default:
       // Fallback to circle
-      geometry = estimateAndNormalizeTube({
-        makeCurve: () => new CircleCurve({ radius: 1.0 }),
-        closed: true,
-        quality,
-        radius: tubeRadius,
-        targetOuterRadius: 1.35,
-      });
+      geometry = buildProcessedTube(new CircleCurve({ radius: 1.0 }), { closed: true, targetOuterRadius: 1.35, sampleN: 300 });
   }
   
 // 不对管壁做法线扰动，保持管径绝对均匀
@@ -1115,6 +1081,7 @@ export async function renderSingleImage(imageParams, options = {}) {
     quality: 'high',
     radius: imageParams.tubeRadius || 0.18,
     deformStrength: imageParams.deformStrength || 0.3,
+    slackness: imageParams.slackness || 0,
     anisotropicScale: imageParams.anisotropicScale || [1, 1, 1],
   });
   

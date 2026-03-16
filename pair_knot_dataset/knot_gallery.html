@@ -273,6 +273,7 @@
               <option value="twisted_ring">〰 Twisted Ring（扭曲环）</option>
               <option value="spiral_disk">🌀 Spiral Loop（闭环螺旋）</option>
               <option value="kinky_unknot">⚡ Kinky Unknot（欺骗性 unknot）</option>
+              <option value="loose_open_knot">🪢 Loose Open Knot（松垮开口结）</option>
             </optgroup>
             <optgroup label="═══ Links（多组件）═══">
               <option value="hopf_link">🔗 Hopf Link（两环相扣）</option>
@@ -295,7 +296,7 @@
           <div class="row">
             <div style="flex: 1">
               <label>数量 N<span>1–500</span></label>
-              <input id="count" type="text" value="2" />
+              <input id="count" type="text" value="1" />
             </div>
             <div style="flex: 1">
               <label>网格列数<span>1–50</span></label>
@@ -471,8 +472,28 @@
           <div class="section-title">Dataset 生成设置</div>
           <div class="row">
             <div style="flex: 1">
-              <label>变形强度<span>0–1</span></label>
-              <input id="deform" type="text" value="0.25" />
+              <label>Deform Strength <span id="deformVal">0.30</span></label>
+              <input
+                type="range"
+                id="deformStrength"
+                min="0"
+                max="1"
+                step="0.01"
+                value="0.30"
+                oninput="document.getElementById('deformVal').textContent=parseFloat(this.value).toFixed(2)"
+              />
+            </div>
+            <div style="flex: 1">
+              <label>Slackness <span id="slacknessVal">0.40</span></label>
+              <input
+                type="range"
+                id="slackness"
+                min="0"
+                max="1"
+                step="0.01"
+                value="0.40"
+                oninput="document.getElementById('slacknessVal').textContent=parseFloat(this.value).toFixed(2)"
+              />
             </div>
           </div>
         </div>
@@ -481,6 +502,10 @@
         <div class="row">
           <button id="btnGenerate" class="btn-primary" style="flex: 2">生成 / 刷新</button>
           <button id="btnExport" class="btn-gold" style="flex: 1; display: none;">导出 JSON</button>
+        </div>
+        <div class="row">
+          <button id="btnCapture" class="btn-gold" style="flex: 1">📷 截图 PNG</button>
+          <button id="btnBatchCapture" class="btn-gold" style="flex: 1">📷 8视角批量导出</button>
         </div>
 
         <!-- === 状态显示 === -->
@@ -539,6 +564,8 @@
         
         // 滑块值同步
         const sliders = [
+          ['deformStrength', 'deformVal', 2],
+          ['slackness', 'slacknessVal', 2],
           ['chainR', 'chainRVal', 1],
           ['chainNumLinks', 'chainNumLinksVal', 0],
           ['chainOffsetY', 'chainOffsetYVal', 2],

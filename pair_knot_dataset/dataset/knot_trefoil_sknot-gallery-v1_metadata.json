@@ -1,0 +1,95 @@
+{
+  "version": "1.1",
+  "knotType": "trefoil",
+  "topologicalId": "trefoil_3_1",
+  "isKnot": true,
+  "isUnknot": false,
+  "isDeceptive": false,
+  "isLoose": true,
+  "crossingNumber": 3,
+  "slackness": 0.7,
+  "deformStrength": 0.51,
+  "seed": "knot-gallery-v1",
+  "difficulty": "low",
+  "bucket_topology": "low",
+  "bucket_saliency": "loose",
+  "trap_type": "loose_knot",
+  "images": [
+    {
+      "filename": "knot_trefoil_sknot-gallery-v1_slack0.70_front.png",
+      "cameraAngle": "front",
+      "cameraPos": [
+        0,
+        2,
+        8
+      ]
+    },
+    {
+      "filename": "knot_trefoil_sknot-gallery-v1_slack0.70_back.png",
+      "cameraAngle": "back",
+      "cameraPos": [
+        0,
+        2,
+        -8
+      ]
+    },
+    {
+      "filename": "knot_trefoil_sknot-gallery-v1_slack0.70_left.png",
+      "cameraAngle": "left",
+      "cameraPos": [
+        -8,
+        2,
+        0
+      ]
+    },
+    {
+      "filename": "knot_trefoil_sknot-gallery-v1_slack0.70_right.png",
+      "cameraAngle": "right",
+      "cameraPos": [
+        8,
+        2,
+        0
+      ]
+    },
+    {
+      "filename": "knot_trefoil_sknot-gallery-v1_slack0.70_top.png",
+      "cameraAngle": "top",
+      "cameraPos": [
+        0,
+        10,
+        0.1
+      ]
+    },
+    {
+      "filename": "knot_trefoil_sknot-gallery-v1_slack0.70_iso_fr.png",
+      "cameraAngle": "iso_fr",
+      "cameraPos": [
+        5,
+        5,
+        7
+      ]
+    },
+    {
+      "filename": "knot_trefoil_sknot-gallery-v1_slack0.70_iso_bk.png",
+      "cameraAngle": "iso_bk",
+      "cameraPos": [
+        -5,
+        5,
+        -7
+      ]
+    },
+    {
+      "filename": "knot_trefoil_sknot-gallery-v1_slack0.70_oblique.png",
+      "cameraAngle": "oblique",
+      "cameraPos": [
+        3,
+        8,
+        4
+      ]
+    }
+  ],
+  "groundTruth": {
+    "task_knotted_or_not": "knotted",
+    "task_knot_family": "torus_knot"
+  }
+}

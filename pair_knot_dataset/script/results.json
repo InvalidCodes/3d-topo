@@ -1,0 +1,488 @@
+[
+  {
+    "task": "T01_knotted_direct",
+    "sample_id": "dataset",
+    "metadata_path": "/Users/yunfei/Desktop/pair_knot_dataset/dataset/knot_chain_sknot-gallery-v1_metadata-2.json",
+    "input_type": "single",
+    "image_paths": [
+      "/Users/yunfei/Desktop/pair_knot_dataset/dataset/knot_chain_sknot-gallery-v1_slack0.56_iso_fr.png"
+    ],
+    "knot_type": "chain",
+    "slackness": 0.56,
+    "difficulty_score": 0.252,
+    "difficulty_level": "easy",
+    "trap_type": null,
+    "ground_truth": "UNKNOTTED",
+    "vlm_answer": "UNKNOTTED",
+    "vlm_raw": "UNKNOTTED\nThe loop appears as a single smooth closed curve with no over-under crossing pattern that would form a nontrivial knot.",
+    "correct": true
+  },
+  {
+    "task": "T02_knotted_cot",
+    "sample_id": "dataset",
+    "metadata_path": "/Users/yunfei/Desktop/pair_knot_dataset/dataset/knot_chain_sknot-gallery-v1_metadata-2.json",
+    "input_type": "single",
+    "image_paths": [
+      "/Users/yunfei/Desktop/pair_knot_dataset/dataset/knot_chain_sknot-gallery-v1_slack0.56_iso_fr.png"
+    ],
+    "knot_type": "chain",
+    "slackness": 0.56,
+    "difficulty_score": 0.252,
+    "difficulty_level": "easy",
+    "trap_type": null,
+    "ground_truth": "UNKNOTTED",
+    "vlm_answer": "UNKNOTTED",
+    "vlm_raw": "UNKNOTTED\n\n1) The rope crosses itself **once** (one over/under crossing).  \n2) **Yes** — with only a single crossing, you can grab the two strands at that crossing and slide/pull them apart, undoing it without cutting.  \n3) So it’s **not truly knotted**; it’s just a **tangled-looking loop** (an unknot).",
+    "correct": true
+  },
+  {
+    "task": "T03_crossing_count",
+    "sample_id": "dataset",
+    "metadata_path": "/Users/yunfei/Desktop/pair_knot_dataset/dataset/knot_chain_sknot-gallery-v1_metadata-2.json",
+    "input_type": "single",
+    "image_paths": [
+      "/Users/yunfei/Desktop/pair_knot_dataset/dataset/knot_chain_sknot-gallery-v1_slack0.56_iso_fr.png"
+    ],
+    "knot_type": "chain",
+    "slackness": 0.56,
+    "difficulty_score": 0.252,
+    "difficulty_level": "easy",
+    "trap_type": null,
+    "ground_truth": "A",
+    "vlm_answer": "B",
+    "vlm_raw": "B",
+    "correct": false
+  },
+  {
+    "task": "T04_can_untie",
+    "sample_id": "dataset",
+    "metadata_path": "/Users/yunfei/Desktop/pair_knot_dataset/dataset/knot_chain_sknot-gallery-v1_metadata-2.json",
+    "input_type": "single",
+    "image_paths": [
+      "/Users/yunfei/Desktop/pair_knot_dataset/dataset/knot_chain_sknot-gallery-v1_slack0.56_iso_fr.png"
+    ],
+    "knot_type": "chain",
+    "slackness": 0.56,
+    "difficulty_score": 0.252,
+    "difficulty_level": "easy",
+    "trap_type": null,
+    "ground_truth": "YES",
+    "vlm_answer": "YES",
+    "vlm_raw": "YES\nIt’s an unknot (a simple loop with no true knotting), so it can be continuously deformed into a flat circle without cutting.",
+    "correct": true
+  },
+  {
+    "task": "T05_confidence",
+    "sample_id": "dataset",
+    "metadata_path": "/Users/yunfei/Desktop/pair_knot_dataset/dataset/knot_chain_sknot-gallery-v1_metadata-2.json",
+    "input_type": "single",
+    "image_paths": [
+      "/Users/yunfei/Desktop/pair_knot_dataset/dataset/knot_chain_sknot-gallery-v1_slack0.56_iso_fr.png"
+    ],
+    "knot_type": "chain",
+    "slackness": 0.56,
+    "difficulty_score": 0.252,
+    "difficulty_level": "easy",
+    "trap_type": null,
+    "ground_truth": "DEFINITELY_UNKNOTTED",
+    "vlm_answer": "PROBABLY_UNKNOTTED",
+    "vlm_raw": "PROBABLY_UNKNOTTED\n\nConfidence: 0.72",
+    "correct": false
+  },
+  {
+    "task": "T06_shape_symmetry",
+    "sample_id": "dataset",
+    "metadata_path": "/Users/yunfei/Desktop/pair_knot_dataset/dataset/knot_chain_sknot-gallery-v1_metadata-2.json",
+    "input_type": "single",
+    "image_paths": [
+      "/Users/yunfei/Desktop/pair_knot_dataset/dataset/knot_chain_sknot-gallery-v1_slack0.56_iso_fr.png"
+    ],
+    "knot_type": "chain",
+    "slackness": 0.56,
+    "difficulty_score": 0.252,
+    "difficulty_level": "easy",
+    "trap_type": null,
+    "ground_truth": "ASYMMETRIC",
+    "vlm_answer": "ASYMMETRIC",
+    "vlm_raw": "ASYMMETRIC\n\nThe loop doesn’t show a clear repeated pattern around a central axis (no obvious 2-fold, 3-fold, etc. rotational symmetry).",
+    "correct": true
+  },
+  {
+    "task": "T07_shape_flat",
+    "sample_id": "dataset",
+    "metadata_path": "/Users/yunfei/Desktop/pair_knot_dataset/dataset/knot_chain_sknot-gallery-v1_metadata-2.json",
+    "input_type": "single",
+    "image_paths": [
+      "/Users/yunfei/Desktop/pair_knot_dataset/dataset/knot_chain_sknot-gallery-v1_slack0.56_iso_fr.png"
+    ],
+    "knot_type": "chain",
+    "slackness": 0.56,
+    "difficulty_score": 0.252,
+    "difficulty_level": "easy",
+    "trap_type": null,
+    "ground_truth": "DEEP",
+    "vlm_answer": "FLAT",
+    "vlm_raw": "FLAT\n\nThe loop appears to lie close to a single plane, with no clear cues of strong out-of-plane depth (no pronounced foreshortening or vertical separation).",
+    "correct": false
+  },
+  {
+    "task": "T08_shape_simple",
+    "sample_id": "dataset",
+    "metadata_path": "/Users/yunfei/Desktop/pair_knot_dataset/dataset/knot_chain_sknot-gallery-v1_metadata-2.json",
+    "input_type": "single",
+    "image_paths": [
+      "/Users/yunfei/Desktop/pair_knot_dataset/dataset/knot_chain_sknot-gallery-v1_slack0.56_iso_fr.png"
+    ],
+    "knot_type": "chain",
+    "slackness": 0.56,
+    "difficulty_score": 0.252,
+    "difficulty_level": "easy",
+    "trap_type": null,
+    "ground_truth": "SIMPLE",
+    "vlm_answer": "COMPLEX",
+    "vlm_raw": "COMPLEX\n\nThe loop crosses/overlaps itself, making the path harder to trace than a simple oval.",
+    "correct": false
+  },
+  {
+    "task": "T09_knot_family",
+    "sample_id": "dataset",
+    "metadata_path": "/Users/yunfei/Desktop/pair_knot_dataset/dataset/knot_chain_sknot-gallery-v1_metadata-2.json",
+    "input_type": "single",
+    "image_paths": [
+      "/Users/yunfei/Desktop/pair_knot_dataset/dataset/knot_chain_sknot-gallery-v1_slack0.56_iso_fr.png"
+    ],
+    "knot_type": "chain",
+    "slackness": 0.56,
+    "difficulty_score": 0.252,
+    "difficulty_level": "easy",
+    "trap_type": null,
+    "ground_truth": "D",
+    "vlm_answer": "A",
+    "vlm_raw": "A",
+    "correct": false
+  },
+  {
+    "task": "T01_knotted_direct",
+    "sample_id": "dataset",
+    "metadata_path": "/Users/yunfei/Desktop/pair_knot_dataset/dataset/knot_chain_sknot-gallery-v1_metadata.json",
+    "input_type": "single",
+    "image_paths": [
+      "/Users/yunfei/Desktop/pair_knot_dataset/dataset/knot_chain_sknot-gallery-v1_slack1.00_iso_fr.png"
+    ],
+    "knot_type": "chain",
+    "slackness": 1,
+    "difficulty_score": 0.45,
+    "difficulty_level": "medium",
+    "trap_type": null,
+    "ground_truth": "UNKNOTTED",
+    "vlm_answer": "UNKNOTTED",
+    "vlm_raw": "UNKNOTTED\nThe loop forms a single continuous curve with only apparent crossings from perspective and no over–under locking structure characteristic of a true knot.",
+    "correct": true
+  },
+  {
+    "task": "T02_knotted_cot",
+    "sample_id": "dataset",
+    "metadata_path": "/Users/yunfei/Desktop/pair_knot_dataset/dataset/knot_chain_sknot-gallery-v1_metadata.json",
+    "input_type": "single",
+    "image_paths": [
+      "/Users/yunfei/Desktop/pair_knot_dataset/dataset/knot_chain_sknot-gallery-v1_slack1.00_iso_fr.png"
+    ],
+    "knot_type": "chain",
+    "slackness": 1,
+    "difficulty_score": 0.45,
+    "difficulty_level": "medium",
+    "trap_type": null,
+    "ground_truth": "UNKNOTTED",
+    "vlm_answer": "UNKNOTTED",
+    "vlm_raw": "UNKNOTTED\n\n1) The rope crosses itself **3** times (three visible over/under crossings near the center).  \n2) **Yes.** Each crossing can be “pulled apart” by sliding one strand past the other (they’re not locked by an alternating over/under pattern that would prevent separation).  \n3) So the loop is **not truly knotted**; it’s an **unknotted** loop that just looks tangled in this projection.",
+    "correct": true
+  },
+  {
+    "task": "T03_crossing_count",
+    "sample_id": "dataset",
+    "metadata_path": "/Users/yunfei/Desktop/pair_knot_dataset/dataset/knot_chain_sknot-gallery-v1_metadata.json",
+    "input_type": "single",
+    "image_paths": [
+      "/Users/yunfei/Desktop/pair_knot_dataset/dataset/knot_chain_sknot-gallery-v1_slack1.00_iso_fr.png"
+    ],
+    "knot_type": "chain",
+    "slackness": 1,
+    "difficulty_score": 0.45,
+    "difficulty_level": "medium",
+    "trap_type": null,
+    "ground_truth": "A",
+    "vlm_answer": "B",
+    "vlm_raw": "B",
+    "correct": false
+  },
+  {
+    "task": "T04_can_untie",
+    "sample_id": "dataset",
+    "metadata_path": "/Users/yunfei/Desktop/pair_knot_dataset/dataset/knot_chain_sknot-gallery-v1_metadata.json",
+    "input_type": "single",
+    "image_paths": [
+      "/Users/yunfei/Desktop/pair_knot_dataset/dataset/knot_chain_sknot-gallery-v1_slack1.00_iso_fr.png"
+    ],
+    "knot_type": "chain",
+    "slackness": 1,
+    "difficulty_score": 0.45,
+    "difficulty_level": "medium",
+    "trap_type": null,
+    "ground_truth": "YES",
+    "vlm_answer": "YES",
+    "vlm_raw": "YES\nThe loop shown is an unknot (no essential crossings), so it can be continuously deformed in 3D without cutting into a planar circle.",
+    "correct": true
+  },
+  {
+    "task": "T05_confidence",
+    "sample_id": "dataset",
+    "metadata_path": "/Users/yunfei/Desktop/pair_knot_dataset/dataset/knot_chain_sknot-gallery-v1_metadata.json",
+    "input_type": "single",
+    "image_paths": [
+      "/Users/yunfei/Desktop/pair_knot_dataset/dataset/knot_chain_sknot-gallery-v1_slack1.00_iso_fr.png"
+    ],
+    "knot_type": "chain",
+    "slackness": 1,
+    "difficulty_score": 0.45,
+    "difficulty_level": "medium",
+    "trap_type": null,
+    "ground_truth": "DEFINITELY_UNKNOTTED",
+    "vlm_answer": "PROBABLY_UNKNOTTED",
+    "vlm_raw": "PROBABLY_UNKNOTTED\n\nConfidence: 0.62",
+    "correct": false
+  },
+  {
+    "task": "T06_shape_symmetry",
+    "sample_id": "dataset",
+    "metadata_path": "/Users/yunfei/Desktop/pair_knot_dataset/dataset/knot_chain_sknot-gallery-v1_metadata.json",
+    "input_type": "single",
+    "image_paths": [
+      "/Users/yunfei/Desktop/pair_knot_dataset/dataset/knot_chain_sknot-gallery-v1_slack1.00_iso_fr.png"
+    ],
+    "knot_type": "chain",
+    "slackness": 1,
+    "difficulty_score": 0.45,
+    "difficulty_level": "medium",
+    "trap_type": null,
+    "ground_truth": "ASYMMETRIC",
+    "vlm_answer": "ASYMMETRIC",
+    "vlm_raw": "ASYMMETRIC\n\nThe loop’s crossings and lobes are unevenly distributed, and there’s no clear center about which the pattern repeats in 2-fold, 3-fold, or higher rotational symmetry.",
+    "correct": true
+  },
+  {
+    "task": "T07_shape_flat",
+    "sample_id": "dataset",
+    "metadata_path": "/Users/yunfei/Desktop/pair_knot_dataset/dataset/knot_chain_sknot-gallery-v1_metadata.json",
+    "input_type": "single",
+    "image_paths": [
+      "/Users/yunfei/Desktop/pair_knot_dataset/dataset/knot_chain_sknot-gallery-v1_slack1.00_iso_fr.png"
+    ],
+    "knot_type": "chain",
+    "slackness": 1,
+    "difficulty_score": 0.45,
+    "difficulty_level": "medium",
+    "trap_type": null,
+    "ground_truth": "FLAT",
+    "vlm_answer": "FLAT",
+    "vlm_raw": "FLAT\n\nThe loop appears to stay close to a single plane, with only minor apparent depth from perspective/shading rather than clear extension in three dimensions.",
+    "correct": true
+  },
+  {
+    "task": "T08_shape_simple",
+    "sample_id": "dataset",
+    "metadata_path": "/Users/yunfei/Desktop/pair_knot_dataset/dataset/knot_chain_sknot-gallery-v1_metadata.json",
+    "input_type": "single",
+    "image_paths": [
+      "/Users/yunfei/Desktop/pair_knot_dataset/dataset/knot_chain_sknot-gallery-v1_slack1.00_iso_fr.png"
+    ],
+    "knot_type": "chain",
+    "slackness": 1,
+    "difficulty_score": 0.45,
+    "difficulty_level": "medium",
+    "trap_type": null,
+    "ground_truth": "SIMPLE",
+    "vlm_answer": "COMPLEX",
+    "vlm_raw": "COMPLEX\n\nThe loop crosses over itself multiple times and forms several lobes, making the path hard to trace.",
+    "correct": false
+  },
+  {
+    "task": "T09_knot_family",
+    "sample_id": "dataset",
+    "metadata_path": "/Users/yunfei/Desktop/pair_knot_dataset/dataset/knot_chain_sknot-gallery-v1_metadata.json",
+    "input_type": "single",
+    "image_paths": [
+      "/Users/yunfei/Desktop/pair_knot_dataset/dataset/knot_chain_sknot-gallery-v1_slack1.00_iso_fr.png"
+    ],
+    "knot_type": "chain",
+    "slackness": 1,
+    "difficulty_score": 0.45,
+    "difficulty_level": "medium",
+    "trap_type": null,
+    "ground_truth": "D",
+    "vlm_answer": "B",
+    "vlm_raw": "B",
+    "correct": false
+  },
+  {
+    "task": "T01_knotted_direct",
+    "sample_id": "dataset",
+    "metadata_path": "/Users/yunfei/Desktop/pair_knot_dataset/dataset/knot_loose_open_knot_sknot-gallery-v1_metadata.json",
+    "input_type": "single",
+    "image_paths": [
+      "/Users/yunfei/Desktop/pair_knot_dataset/dataset/knot_loose_open_knot_sknot-gallery-v1_slack1.00_iso_fr.png"
+    ],
+    "knot_type": "loose_open_knot",
+    "slackness": 1,
+    "difficulty_score": 0.45,
+    "difficulty_level": "medium",
+    "trap_type": null,
+    "ground_truth": "KNOTTED",
+    "vlm_answer": "UNKNOTTED",
+    "vlm_raw": "UNKNOTTED\nThe loop is a single smooth closed curve with no visible crossing that forms an overhand/trefoil structure—just a simple loop with a strand passing alongside itself.",
+    "correct": false
+  },
+  {
+    "task": "T02_knotted_cot",
+    "sample_id": "dataset",
+    "metadata_path": "/Users/yunfei/Desktop/pair_knot_dataset/dataset/knot_loose_open_knot_sknot-gallery-v1_metadata.json",
+    "input_type": "single",
+    "image_paths": [
+      "/Users/yunfei/Desktop/pair_knot_dataset/dataset/knot_loose_open_knot_sknot-gallery-v1_slack1.00_iso_fr.png"
+    ],
+    "knot_type": "loose_open_knot",
+    "slackness": 1,
+    "difficulty_score": 0.45,
+    "difficulty_level": "medium",
+    "trap_type": null,
+    "ground_truth": "KNOTTED",
+    "vlm_answer": "UNKNOTTED",
+    "vlm_raw": "UNKNOTTED\n\n1. The rope crosses itself **once** (a single over/under crossing is visible).\n2. **Yes.** With only one crossing, you can grab the two strands at that crossing and slide/pull them apart, undoing it without cutting the loop.\n3. So the loop is **not truly knotted**; it’s just **tangled-looking** (an unknotted loop with a removable twist/crossing).",
+    "correct": false
+  },
+  {
+    "task": "T03_crossing_count",
+    "sample_id": "dataset",
+    "metadata_path": "/Users/yunfei/Desktop/pair_knot_dataset/dataset/knot_loose_open_knot_sknot-gallery-v1_metadata.json",
+    "input_type": "single",
+    "image_paths": [
+      "/Users/yunfei/Desktop/pair_knot_dataset/dataset/knot_loose_open_knot_sknot-gallery-v1_slack1.00_iso_fr.png"
+    ],
+    "knot_type": "loose_open_knot",
+    "slackness": 1,
+    "difficulty_score": 0.45,
+    "difficulty_level": "medium",
+    "trap_type": null,
+    "ground_truth": "A",
+    "vlm_answer": "B",
+    "vlm_raw": "B",
+    "correct": false
+  },
+  {
+    "task": "T04_can_untie",
+    "sample_id": "dataset",
+    "metadata_path": "/Users/yunfei/Desktop/pair_knot_dataset/dataset/knot_loose_open_knot_sknot-gallery-v1_metadata.json",
+    "input_type": "single",
+    "image_paths": [
+      "/Users/yunfei/Desktop/pair_knot_dataset/dataset/knot_loose_open_knot_sknot-gallery-v1_slack1.00_iso_fr.png"
+    ],
+    "knot_type": "loose_open_knot",
+    "slackness": 1,
+    "difficulty_score": 0.45,
+    "difficulty_level": "medium",
+    "trap_type": null,
+    "ground_truth": "NO",
+    "vlm_answer": "YES",
+    "vlm_raw": "YES\nThe loop shown is an unknot (no true crossings/links), so it can be continuously deformed into a planar circle without cutting.",
+    "correct": false
+  },
+  {
+    "task": "T05_confidence",
+    "sample_id": "dataset",
+    "metadata_path": "/Users/yunfei/Desktop/pair_knot_dataset/dataset/knot_loose_open_knot_sknot-gallery-v1_metadata.json",
+    "input_type": "single",
+    "image_paths": [
+      "/Users/yunfei/Desktop/pair_knot_dataset/dataset/knot_loose_open_knot_sknot-gallery-v1_slack1.00_iso_fr.png"
+    ],
+    "knot_type": "loose_open_knot",
+    "slackness": 1,
+    "difficulty_score": 0.45,
+    "difficulty_level": "medium",
+    "trap_type": null,
+    "ground_truth": "DEFINITELY_KNOTTED",
+    "vlm_answer": "PROBABLY_UNKNOTTED",
+    "vlm_raw": "PROBABLY_UNKNOTTED\n\nConfidence: 0.65",
+    "correct": false
+  },
+  {
+    "task": "T06_shape_symmetry",
+    "sample_id": "dataset",
+    "metadata_path": "/Users/yunfei/Desktop/pair_knot_dataset/dataset/knot_loose_open_knot_sknot-gallery-v1_metadata.json",
+    "input_type": "single",
+    "image_paths": [
+      "/Users/yunfei/Desktop/pair_knot_dataset/dataset/knot_loose_open_knot_sknot-gallery-v1_slack1.00_iso_fr.png"
+    ],
+    "knot_type": "loose_open_knot",
+    "slackness": 1,
+    "difficulty_score": 0.45,
+    "difficulty_level": "medium",
+    "trap_type": null,
+    "ground_truth": "ASYMMETRIC",
+    "vlm_answer": "ASYMMETRIC",
+    "vlm_raw": "ASYMMETRIC\n\nThe loop doesn’t show a clear repeated pattern around a central axis (no obvious 2-fold, 3-fold, etc. rotational symmetry).",
+    "correct": true
+  },
+  {
+    "task": "T07_shape_flat",
+    "sample_id": "dataset",
+    "metadata_path": "/Users/yunfei/Desktop/pair_knot_dataset/dataset/knot_loose_open_knot_sknot-gallery-v1_metadata.json",
+    "input_type": "single",
+    "image_paths": [
+      "/Users/yunfei/Desktop/pair_knot_dataset/dataset/knot_loose_open_knot_sknot-gallery-v1_slack1.00_iso_fr.png"
+    ],
+    "knot_type": "loose_open_knot",
+    "slackness": 1,
+    "difficulty_score": 0.45,
+    "difficulty_level": "medium",
+    "trap_type": null,
+    "ground_truth": "FLAT",
+    "vlm_answer": "FLAT",
+    "vlm_raw": "FLAT\n\nThe loop appears to lie nearly in a single plane, with no clear sections coming significantly toward or away from the viewer; it reads like a mostly planar curve with minimal depth variation.",
+    "correct": true
+  },
+  {
+    "task": "T08_shape_simple",
+    "sample_id": "dataset",
+    "metadata_path": "/Users/yunfei/Desktop/pair_knot_dataset/dataset/knot_loose_open_knot_sknot-gallery-v1_metadata.json",
+    "input_type": "single",
+    "image_paths": [
+      "/Users/yunfei/Desktop/pair_knot_dataset/dataset/knot_loose_open_knot_sknot-gallery-v1_slack1.00_iso_fr.png"
+    ],
+    "knot_type": "loose_open_knot",
+    "slackness": 1,
+    "difficulty_score": 0.45,
+    "difficulty_level": "medium",
+    "trap_type": null,
+    "ground_truth": "SIMPLE",
+    "vlm_answer": "COMPLEX",
+    "vlm_raw": "COMPLEX\n\nThe loop appears to cross over itself and has multiple overlapping segments, making the path harder to trace than a single clean oval.",
+    "correct": false
+  },
+  {
+    "task": "T09_knot_family",
+    "sample_id": "dataset",
+    "metadata_path": "/Users/yunfei/Desktop/pair_knot_dataset/dataset/knot_loose_open_knot_sknot-gallery-v1_metadata.json",
+    "input_type": "single",
+    "image_paths": [
+      "/Users/yunfei/Desktop/pair_knot_dataset/dataset/knot_loose_open_knot_sknot-gallery-v1_slack1.00_iso_fr.png"
+    ],
+    "knot_type": "loose_open_knot",
+    "slackness": 1,
+    "difficulty_score": 0.45,
+    "difficulty_level": "medium",
+    "trap_type": null,
+    "ground_truth": "D",
+    "vlm_answer": "A",
+    "vlm_raw": "A\n\nThe rope appears as a single elongated loop with no clear over/under crossings visible, so it looks like a simple loop rather than a trefoil, figure-eight, or more complex knot.",
+    "correct": false
+  }
+]

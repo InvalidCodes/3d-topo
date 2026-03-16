@@ -1,0 +1,95 @@
+{
+  "version": "1.1",
+  "knotType": "torus_2_5",
+  "topologicalId": "cinquefoil_5_1",
+  "isKnot": true,
+  "isUnknot": false,
+  "isDeceptive": false,
+  "isLoose": false,
+  "crossingNumber": 5,
+  "slackness": 0.48,
+  "deformStrength": 0.11,
+  "seed": "knot-gallery-v1",
+  "difficulty": "mid",
+  "bucket_topology": "mid",
+  "bucket_saliency": "medium",
+  "trap_type": null,
+  "images": [
+    {
+      "filename": "knot_torus_2_5_sknot-gallery-v1_slack0.48_front.png",
+      "cameraAngle": "front",
+      "cameraPos": [
+        0,
+        2,
+        8
+      ]
+    },
+    {
+      "filename": "knot_torus_2_5_sknot-gallery-v1_slack0.48_back.png",
+      "cameraAngle": "back",
+      "cameraPos": [
+        0,
+        2,
+        -8
+      ]
+    },
+    {
+      "filename": "knot_torus_2_5_sknot-gallery-v1_slack0.48_left.png",
+      "cameraAngle": "left",
+      "cameraPos": [
+        -8,
+        2,
+        0
+      ]
+    },
+    {
+      "filename": "knot_torus_2_5_sknot-gallery-v1_slack0.48_right.png",
+      "cameraAngle": "right",
+      "cameraPos": [
+        8,
+        2,
+        0
+      ]
+    },
+    {
+      "filename": "knot_torus_2_5_sknot-gallery-v1_slack0.48_top.png",
+      "cameraAngle": "top",
+      "cameraPos": [
+        0,
+        10,
+        0.1
+      ]
+    },
+    {
+      "filename": "knot_torus_2_5_sknot-gallery-v1_slack0.48_iso_fr.png",
+      "cameraAngle": "iso_fr",
+      "cameraPos": [
+        5,
+        5,
+        7
+      ]
+    },
+    {
+      "filename": "knot_torus_2_5_sknot-gallery-v1_slack0.48_iso_bk.png",
+      "cameraAngle": "iso_bk",
+      "cameraPos": [
+        -5,
+        5,
+        -7
+      ]
+    },
+    {
+      "filename": "knot_torus_2_5_sknot-gallery-v1_slack0.48_oblique.png",
+      "cameraAngle": "oblique",
+      "cameraPos": [
+        3,
+        8,
+        4
+      ]
+    }
+  ],
+  "groundTruth": {
+    "task_knotted_or_not": "knotted",
+    "task_knot_family": "torus_knot"
+  }
+}
