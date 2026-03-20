@@ -18,7 +18,7 @@ BENCHMARK="${ROOT_DIR}/vlm_benchmark.py"
 TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 
 # ── API Key ──────────────────────────────────────────────────
-export OPENAI_API_KEY="${OPENAI_API_KEY:-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}"
+export OPENAI_API_KEY="${}"
 
 # ── Args ─────────────────────────────────────────────────────
 MODE="${1:-smoke}"       # smoke | full | dry
