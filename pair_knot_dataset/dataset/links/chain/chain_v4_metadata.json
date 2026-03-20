@@ -1,0 +1,50 @@
+{
+  "version": "3.0",
+  "id": "chain_v4",
+  "knotType": "chain",
+  "topologicalId": "chain",
+  "isKnot": false,
+  "isUnknot": false,
+  "isDeceptive": false,
+  "isLink": true,
+  "numComponents": 7,
+  "crossingNumber": null,
+  "family": "link",
+  "seed": 951523,
+  "slackness": 0.38,
+  "deformStrength": 0.21486419686116276,
+  "bucket_topology": "low",
+  "bucket_saliency": "medium",
+  "trap_type": null,
+  "difficulty_score": 0,
+  "difficulty": "medium",
+  "images": [
+    {
+      "filename": "chain_v4_iso_fr.png",
+      "cameraAngle": "iso_fr",
+      "cameraPos": [
+        3.5,
+        3.5,
+        5
+      ]
+    },
+    {
+      "filename": "chain_v4_front.png",
+      "cameraAngle": "front",
+      "cameraPos": [
+        0,
+        1.5,
+        6
+      ]
+    },
+    {
+      "filename": "chain_v4_oblique.png",
+      "cameraAngle": "oblique",
+      "cameraPos": [
+        2,
+        6,
+        3
+      ]
+    }
+  ]
+}

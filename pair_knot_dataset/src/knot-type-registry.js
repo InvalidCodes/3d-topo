@@ -64,8 +64,11 @@ export const KNOT_TYPE_REGISTRY = {
     family: 'unknot',
     generator: 'unknot',
     difficulty: 'easy',
+    isKnot: false,
+    isUnknot: true,
     isDeceptive: false,
     isLink: false,
+    numComponents: 1,
     aliases: ['circle', '0_1', 'trivial'],
     description: '平凡结（简单圆环）',
   },
@@ -76,40 +79,66 @@ export const KNOT_TYPE_REGISTRY = {
     family: 'unknot_variant',
     generator: 'twisted_ring',
     difficulty: 'medium',
+    isKnot: false,
+    isUnknot: true,
     isDeceptive: true,  // 视觉上有"伪交叉"
     isLink: false,
+    numComponents: 1,
     aliases: ['wavy_ring', 'wobble_ring'],
     description: '扭曲环（视觉有波动但拓扑平凡）',
     visualComplexity: 'medium',
   },
-  
+
   spiral_disk: {
     topologicalId: TOPOLOGICAL_CLASSES.UNKNOT,
     crossingNumber: 0,
     family: 'unknot_variant',
     generator: 'spiral_disk',
     difficulty: 'medium',
+    isKnot: false,
+    isUnknot: true,
     isDeceptive: true,
     isLink: false,
+    numComponents: 1,
     aliases: ['spiral_loop', 'coil'],
     description: '螺旋环（闭合螺旋，拓扑平凡）',
     visualComplexity: 'medium',
   },
-  
+
   kinky_unknot: {
     topologicalId: TOPOLOGICAL_CLASSES.UNKNOT,
     crossingNumber: 0,
     family: 'unknot_variant',
     generator: 'kinky_unknot',
     difficulty: 'hard',
+    isKnot: false,
+    isUnknot: true,
     isDeceptive: true,  // 高度欺骗性！
     isLink: false,
+    numComponents: 1,
     aliases: ['messy_unknot', 'fake_knot'],
     description: '扭曲平凡结（视觉极复杂但拓扑平凡，用于测试模型）',
     visualComplexity: 'high',
     isHardNegative: true,  // 标记为"困难负样本"
   },
   
+  loose_open_knot: {
+    topologicalId: TOPOLOGICAL_CLASSES.TREFOIL,  // 拓扑上是 trefoil（只是松散呈现）
+    crossingNumber: 3,
+    family: 'torus_knot',
+    generator: 'loose_open_knot',
+    difficulty: 'hard',
+    isKnot: true,
+    isUnknot: false,
+    isDeceptive: false,  // 不是 deceptive，它确实是 knot，只是松到 VLM 会误判
+    isLink: false,
+    numComponents: 1,
+    aliases: ['loose_trefoil', 'slack_knot'],
+    description: '松散绳结（真正的 trefoil 但非常松，VLM 容易误判为 unknotted）',
+    visualComplexity: 'low',  // 视觉上看起来简单
+    isLooseVariant: true,     // 标记为松散变体
+  },
+
   // ========================================
   // === 真正的 Knots（非平凡结）===
   // ========================================
@@ -120,85 +149,106 @@ export const KNOT_TYPE_REGISTRY = {
     family: 'torus_knot',
     generator: 'trefoil',
     difficulty: 'easy',
+    isKnot: true,
+    isUnknot: false,
     isDeceptive: false,
     isLink: false,
+    numComponents: 1,
     torusParams: { p: 2, q: 3 },
     aliases: ['3_1', 'T(2,3)', 'overhand'],
     description: '三叶结（最简单的非平凡结）',
   },
-  
+
   figure8: {
     topologicalId: TOPOLOGICAL_CLASSES.FIGURE_EIGHT,
     crossingNumber: 4,
     family: 'twist_knot',
     generator: 'figure8',
     difficulty: 'easy',
+    isKnot: true,
+    isUnknot: false,
     isDeceptive: false,
     isLink: false,
+    numComponents: 1,
     aliases: ['4_1', 'figure_eight', 'flemish'],
     description: '八字结（最简单的 twist knot）',
   },
-  
+
   torus_2_5: {
     topologicalId: TOPOLOGICAL_CLASSES.CINQUEFOIL,
     crossingNumber: 5,
     family: 'torus_knot',
     generator: 'torus_2_5',
     difficulty: 'medium',
+    isKnot: true,
+    isUnknot: false,
     isDeceptive: false,
     isLink: false,
+    numComponents: 1,
     torusParams: { p: 2, q: 5 },
     aliases: ['5_1', 'T(2,5)', 'cinquefoil', 'solomon_seal'],
     description: 'T(2,5) 五叶结',
   },
-  
+
   torus_2_7: {
     topologicalId: TOPOLOGICAL_CLASSES.TORUS_2_7,
     crossingNumber: 7,
     family: 'torus_knot',
     generator: 'torus_2_7',
     difficulty: 'hard',
+    isKnot: true,
+    isUnknot: false,
     isDeceptive: false,
     isLink: false,
+    numComponents: 1,
     torusParams: { p: 2, q: 7 },
     aliases: ['7_1', 'T(2,7)', 'septafoil'],
     description: 'T(2,7) 七叶结',
   },
-  
+
   torus_2_9: {
     topologicalId: TOPOLOGICAL_CLASSES.TORUS_2_9,
     crossingNumber: 9,
     family: 'torus_knot',
     generator: 'torus_2_9',
     difficulty: 'hard',
+    isKnot: true,
+    isUnknot: false,
     isDeceptive: false,
     isLink: false,
+    numComponents: 1,
     torusParams: { p: 2, q: 9 },
     aliases: ['9_1', 'T(2,9)'],
     description: 'T(2,9) 九叶结',
   },
-  
+
   torus_3_4: {
     topologicalId: TOPOLOGICAL_CLASSES.TORUS_3_4,
     crossingNumber: 8,
     family: 'torus_knot',
     generator: 'torus_3_4',
     difficulty: 'hard',
+    isKnot: true,
+    isUnknot: false,
     isDeceptive: false,
     isLink: false,
+    numComponents: 1,
     torusParams: { p: 3, q: 4 },
     aliases: ['T(3,4)', '8_19'],
     description: 'T(3,4) 环面结',
   },
-  
+
   torus_3_5: {
     topologicalId: TOPOLOGICAL_CLASSES.TORUS_3_5,
     crossingNumber: 10,
     family: 'torus_knot',
     generator: 'torus_3_5',
     difficulty: 'hard',
+    isKnot: true,
+    isUnknot: false,
     isDeceptive: false,
     isLink: false,
+    numComponents: 1,
     torusParams: { p: 3, q: 5 },
     aliases: ['T(3,5)', '10_124'],
     description: 'T(3,5) 环面结',
@@ -210,49 +260,57 @@ export const KNOT_TYPE_REGISTRY = {
   
   hopf_link: {
     topologicalId: TOPOLOGICAL_CLASSES.HOPF_LINK,
-    crossingNumber: 2,  // 链环的交叉数
+    crossingNumber: 2,
     family: 'link',
     generator: 'hopf_link',
     difficulty: 'easy',
+    isKnot: false,
+    isUnknot: false,
     isDeceptive: false,
     isLink: true,
     numComponents: 2,
     aliases: ['2^2_1', 'hopf'],
     description: 'Hopf 链（两环相扣）',
   },
-  
+
   unlinked_rings: {
     topologicalId: TOPOLOGICAL_CLASSES.UNLINKED_2,
     crossingNumber: 0,
     family: 'link',
     generator: 'unlinked_rings',
     difficulty: 'easy',
+    isKnot: false,
+    isUnknot: false,
     isDeceptive: false,
     isLink: true,
     numComponents: 2,
     aliases: ['unlink_2', 'separate_rings'],
     description: '分离环（两环不扣）',
   },
-  
+
   chain: {
     topologicalId: TOPOLOGICAL_CLASSES.CHAIN_N,
     crossingNumber: null,  // 取决于环数
     family: 'link',
     generator: 'chain',
     difficulty: 'medium',
+    isKnot: false,
+    isUnknot: false,
     isDeceptive: false,
     isLink: true,
-    numComponents: null,  // 可变
+    numComponents: null,  // 可变，默认 3
     aliases: ['chain_link'],
     description: '锁链（多环相扣）',
   },
-  
+
   borromean: {
     topologicalId: TOPOLOGICAL_CLASSES.BORROMEAN,
     crossingNumber: 6,
     family: 'link',
     generator: 'borromean',
     difficulty: 'hard',
+    isKnot: false,
+    isUnknot: false,
     isDeceptive: false,
     isLink: true,
     numComponents: 3,
@@ -398,6 +456,10 @@ export const CONFUSING_PAIRS = [
   // 2. Twisted Ring vs Trefoil（变形后更难区分）
   { a: 'twisted_ring', b: 'trefoil', reason: 'deformed unknot variant vs trefoil' },
   { a: 'spiral_disk', b: 'trefoil', reason: 'spiral unknot vs trefoil' },
+
+  // 2b. Loose knot vs Unknot（松散的真结 vs 松散的假结）
+  { a: 'loose_open_knot', b: 'unknot', reason: 'loose real knot looks like simple loop' },
+  { a: 'loose_open_knot', b: 'twisted_ring', reason: 'loose real knot vs twisted unknot' },
   
   // 3. 相邻交叉数的 Torus Knots
   { a: 'trefoil', b: 'torus_2_5', reason: '3 vs 5 crossings, same family' },
@@ -436,7 +498,7 @@ export function isConfusingPair(typeA, typeB) {
 export const KNOT_TYPES_BY_DIFFICULTY = {
   easy: ['unknot', 'trefoil', 'figure8', 'hopf_link', 'unlinked_rings'],
   medium: ['twisted_ring', 'spiral_disk', 'torus_2_5', 'chain'],
-  hard: ['kinky_unknot', 'torus_2_7', 'torus_2_9', 'torus_3_4', 'torus_3_5', 'borromean'],
+  hard: ['kinky_unknot', 'loose_open_knot', 'torus_2_7', 'torus_2_9', 'torus_3_4', 'torus_3_5', 'borromean'],
 };
 
 /**

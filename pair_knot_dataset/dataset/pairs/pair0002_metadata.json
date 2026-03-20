@@ -1,0 +1,67 @@
+{
+  "version": "3.0",
+  "id": "pair0002",
+  "label_equivalent": true,
+  "topologicalIdA": "trefoil_3_1",
+  "topologicalIdB": "trefoil_3_1",
+  "difficulty": "medium",
+  "difficulty_score": 0.409956755766806,
+  "image1": "pair0002_A.png",
+  "image2": "pair0002_B.png",
+  "imageA": {
+    "knotType": "loose_open_knot",
+    "seed": 793182,
+    "deformStrength": 0.12809221455827358,
+    "slackness": 0.7884806260466576,
+    "bucket_topology": "low",
+    "bucket_saliency": "loose",
+    "trap_type": "loose_knot",
+    "cameraPosition": [
+      7.885628089542916,
+      4.205497927266163,
+      -9.92431396072972
+    ],
+    "cameraTarget": [
+      0,
+      0,
+      0
+    ],
+    "cameraFov": 41.0471081873402,
+    "color": "#d5ffe5",
+    "metalness": 0.1,
+    "roughness": 0.4,
+    "tubeRadius": 0.07,
+    "lightIntensity": 1.2,
+    "ambientIntensity": 0.9,
+    "backgroundColor": "#1a2236",
+    "gaussCode": "1o 2o 3o 1u 2u 3u"
+  },
+  "imageB": {
+    "knotType": "trefoil",
+    "seed": 544635,
+    "deformStrength": 0.4127047166228295,
+    "slackness": 0.5092051463201642,
+    "bucket_topology": "low",
+    "bucket_saliency": "medium",
+    "trap_type": null,
+    "cameraPosition": [
+      6.993598459254104,
+      -5.484400245967188,
+      5.708738659839536
+    ],
+    "cameraTarget": [
+      0,
+      0,
+      0
+    ],
+    "cameraFov": 39.97572894208133,
+    "color": "#e8e8f5",
+    "metalness": 0.1,
+    "roughness": 0.4,
+    "tubeRadius": 0.07,
+    "lightIntensity": 1.2,
+    "ambientIntensity": 0.9,
+    "backgroundColor": "#1a2236",
+    "gaussCode": "1o 2o 3o 1u 2u 3u"
+  }
+}

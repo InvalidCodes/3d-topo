@@ -1,0 +1,50 @@
+{
+  "version": "3.0",
+  "id": "kinky_unknot_s0.25_d0.32_v1",
+  "knotType": "kinky_unknot",
+  "topologicalId": "unknot",
+  "isKnot": false,
+  "isUnknot": true,
+  "isDeceptive": true,
+  "isLink": false,
+  "numComponents": 1,
+  "crossingNumber": 0,
+  "family": "UNKNOT",
+  "seed": 320144,
+  "slackness": 0.25,
+  "deformStrength": 0.3245530360029079,
+  "bucket_topology": "low",
+  "bucket_saliency": "tight",
+  "trap_type": "deceptive_unknot",
+  "difficulty_score": 0.173,
+  "difficulty": "easy",
+  "images": [
+    {
+      "filename": "kinky_unknot_s0.25_d0.32_v1_iso_fr.png",
+      "cameraAngle": "iso_fr",
+      "cameraPos": [
+        3.5,
+        3.5,
+        5
+      ]
+    },
+    {
+      "filename": "kinky_unknot_s0.25_d0.32_v1_front.png",
+      "cameraAngle": "front",
+      "cameraPos": [
+        0,
+        1.5,
+        6
+      ]
+    },
+    {
+      "filename": "kinky_unknot_s0.25_d0.32_v1_oblique.png",
+      "cameraAngle": "oblique",
+      "cameraPos": [
+        2,
+        6,
+        3
+      ]
+    }
+  ]
+}

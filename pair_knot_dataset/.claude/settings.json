@@ -1,8 +1,15 @@
 {
   "permissions": {
     "allow": [
-      "WebSearch"
-      "dangerouslySkipPermissions": true
+      "WebSearch",
+      "Bash(python3 -m json.tool)",
+      "Bash(python vlm_benchmark.py --data_dir ./dataset --tasks all --dry-run)",
+      "Bash(python script/validate_dataset.py --data_dir ./dataset)",
+      "Bash(python vlm_benchmark.py --data_dir ./dataset --tasks all --dry-run --limit 2)",
+      "Read(//Users/yunfei/Downloads/dataset/singles/loose_open_knot/**)",
+      "Bash(ls /Users/yunfei/Desktop/pair_knot_dataset/dataset/pairs/*metadata*.json)",
+      "Bash(xargs -I{} /Users/yunfei/miniconda3/bin/python3 -c \"import json; d=json.load\\(open\\(''''{}''''\\)\\); print\\(d.get\\(''''id'''',''''?''''\\), d.get\\(''''label_equivalent'''',''''?''''\\)\\)\")"
     ]
-  }
+  },
+  "dangerouslySkipPermissions": true
 }

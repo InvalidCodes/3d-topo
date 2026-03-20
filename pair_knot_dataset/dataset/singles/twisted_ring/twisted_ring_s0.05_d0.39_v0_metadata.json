@@ -1,0 +1,50 @@
+{
+  "version": "3.0",
+  "id": "twisted_ring_s0.05_d0.39_v0",
+  "knotType": "twisted_ring",
+  "topologicalId": "unknot",
+  "isKnot": false,
+  "isUnknot": true,
+  "isDeceptive": true,
+  "isLink": false,
+  "numComponents": 1,
+  "crossingNumber": 0,
+  "family": "UNKNOT",
+  "seed": 580507,
+  "slackness": 0.05,
+  "deformStrength": 0.3920203656773083,
+  "bucket_topology": "low",
+  "bucket_saliency": "tight",
+  "trap_type": "deceptive_unknot",
+  "difficulty_score": 0.083,
+  "difficulty": "easy",
+  "images": [
+    {
+      "filename": "twisted_ring_s0.05_d0.39_v0_iso_fr.png",
+      "cameraAngle": "iso_fr",
+      "cameraPos": [
+        3.5,
+        3.5,
+        5
+      ]
+    },
+    {
+      "filename": "twisted_ring_s0.05_d0.39_v0_front.png",
+      "cameraAngle": "front",
+      "cameraPos": [
+        0,
+        1.5,
+        6
+      ]
+    },
+    {
+      "filename": "twisted_ring_s0.05_d0.39_v0_oblique.png",
+      "cameraAngle": "oblique",
+      "cameraPos": [
+        2,
+        6,
+        3
+      ]
+    }
+  ]
+}

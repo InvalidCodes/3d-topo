@@ -1,0 +1,50 @@
+{
+  "version": "3.0",
+  "id": "torus_2_9_s0.18_d0.22_v2",
+  "knotType": "torus_2_9",
+  "topologicalId": "torus_9_1",
+  "isKnot": true,
+  "isUnknot": false,
+  "isDeceptive": false,
+  "isLink": false,
+  "numComponents": 1,
+  "crossingNumber": 9,
+  "family": "TORUS",
+  "seed": 176296,
+  "slackness": 0.18,
+  "deformStrength": 0.21770254536531863,
+  "bucket_topology": "high",
+  "bucket_saliency": "tight",
+  "trap_type": null,
+  "difficulty_score": 0.396,
+  "difficulty": "medium",
+  "images": [
+    {
+      "filename": "torus_2_9_s0.18_d0.22_v2_iso_fr.png",
+      "cameraAngle": "iso_fr",
+      "cameraPos": [
+        3.5,
+        3.5,
+        5
+      ]
+    },
+    {
+      "filename": "torus_2_9_s0.18_d0.22_v2_front.png",
+      "cameraAngle": "front",
+      "cameraPos": [
+        0,
+        1.5,
+        6
+      ]
+    },
+    {
+      "filename": "torus_2_9_s0.18_d0.22_v2_oblique.png",
+      "cameraAngle": "oblique",
+      "cameraPos": [
+        2,
+        6,
+        3
+      ]
+    }
+  ]
+}

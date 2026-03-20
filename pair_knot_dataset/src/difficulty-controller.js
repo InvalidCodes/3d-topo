@@ -19,7 +19,7 @@ function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 
 function scoreToLevel(score) {
   const s = clamp(score, 0, 1);
-  return s < 0.35 ? 'easy' : (s < 0.65 ? 'medium' : 'hard');
+  return s < 0.30 ? 'easy' : (s < 0.55 ? 'medium' : 'hard');
 }
 
 // ============= 难度分桶（正交维度）=============

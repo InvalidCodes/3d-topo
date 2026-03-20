@@ -991,7 +991,7 @@ function buildChainGeometry({ rng, quality = 'mid', radius = 0.24, segments = nu
 // Build Borromean Rings
 function buildBorromeanRingsGeometry({ rng, quality = 'mid', radius = 0.24, segments = null } = {}) {
   const { tubularSegments, radialSegments } = tubeQualityParams(quality, segments);
-  
+
   const parseVal = (id, fallback) => {
     const el = document.getElementById(id);
     if (!el) return fallback;
@@ -1001,7 +1001,7 @@ function buildBorromeanRingsGeometry({ rng, quality = 'mid', radius = 0.24, segm
 
   const R = parseVal('borromeanR', 1.5);
   const ratio = parseVal('borromeanRatio', 1.6);
-  const yellowY = parseVal('borromeanYellowY', 0);
+  const yellowY = parseVal('borromeanYellowY', 0.70);
   const blueY = parseVal('borromeanBlueY', 0);
 
   const tubeRadius = DISPLAY_ROPE_RADIUS;
@@ -1036,24 +1036,85 @@ function buildBorromeanRingsGeometry({ rng, quality = 'mid', radius = 0.24, segm
     { center: new THREE.Vector3(0, blueY, 0), xAxis: new THREE.Vector3(1, 0, 0), yAxis: new THREE.Vector3(0, 0, 1) },
   ];
 
+  // --- Step 1: Sample all three ring centerlines ---
+  const N = 360;
+  const ringPoints = [];
+  for (let ri = 0; ri < 3; ri++) {
+    const curve = new EllipseCurve3D({ a, b, ...configs[ri] });
+    const pts = [];
+    for (let k = 0; k < N; k++) pts.push(curve.getPoint(k / N));
+    ringPoints.push(pts);
+  }
+
+  // --- Step 2: Find crossings between each pair and apply over/under bumps ---
+  // Borromean topology: each pair is pairwise unlinked (alternating over/under),
+  // but the triple is non-trivially linked because crossings interleave on each ring.
+  const bumpMag = tubeRadius * 5;         // displacement per side at crossing peak
+  const sigma = N * 0.05;                 // Gaussian width in index units (~18 pts)
+  const crossingThreshold = tubeRadius * 20; // only bump crossings within this distance
+
+  const circDist = (ia, ib) => { const d = Math.abs(ia - ib); return Math.min(d, N - d); };
+
+  const findCrossings = (ptsA, ptsB) => {
+    // For each point on A, find closest distance to B's polyline
+    const cDist = new Float64Array(N);
+    const cIdx  = new Int32Array(N);
+    for (let i = 0; i < N; i++) {
+      let minD = Infinity, minJ = 0;
+      for (let j = 0; j < N; j++) {
+        const d = ptsA[i].distanceTo(ptsB[j]);
+        if (d < minD) { minD = d; minJ = j; }
+      }
+      cDist[i] = minD;
+      cIdx[i]  = minJ;
+    }
+    // Collect local minima as crossing candidates
+    const results = [];
+    for (let i = 0; i < N; i++) {
+      const prev = (i - 1 + N) % N, next = (i + 1) % N;
+      if (cDist[i] > cDist[prev] || cDist[i] > cDist[next]) continue;
+      if (cDist[i] > crossingThreshold) continue;
+      // Skip if too close to an already-found crossing on ring A
+      if (results.some(r => circDist(i, r.idxA) < N * 0.1)) continue;
+      const j = cIdx[i];
+      // Crossing normal = cross product of the two tangent vectors
+      const tA = new THREE.Vector3().subVectors(ptsA[(i + 1) % N], ptsA[(i - 1 + N) % N]).normalize();
+      const tB = new THREE.Vector3().subVectors(ptsB[(j + 1) % N], ptsB[(j - 1 + N) % N]).normalize();
+      const normal = new THREE.Vector3().crossVectors(tA, tB);
+      if (normal.length() < 1e-6) continue; // tangents parallel, not a real crossing
+      normal.normalize();
+      results.push({ idxA: i, idxB: j, normal, dist: cDist[i] });
+    }
+    return results;
+  };
+
+  const pairs = [[0, 1], [0, 2], [1, 2]];
+  for (const [ri, rj] of pairs) {
+    const crossings = findCrossings(ringPoints[ri], ringPoints[rj]);
+    crossings.forEach((cr, idx) => {
+      // Alternate over/under at each crossing → linking number = 0 (pairwise unlinked)
+      const sign = (idx % 2 === 0) ? 1 : -1;
+      for (let k = 0; k < N; k++) {
+        const dA = circDist(k, cr.idxA);
+        const wA = Math.exp(-(dA * dA) / (2 * sigma * sigma));
+        ringPoints[ri][k].addScaledVector(cr.normal, sign * bumpMag * wA);
+
+        const dB = circDist(k, cr.idxB);
+        const wB = Math.exp(-(dB * dB) / (2 * sigma * sigma));
+        ringPoints[rj][k].addScaledVector(cr.normal, -sign * bumpMag * wB);
+      }
+    });
+  }
+
+  // --- Step 3: Build tube geometries from displaced centerlines ---
   const geoms = [];
   for (let i = 0; i < 3; i++) {
-    const curve = new EllipseCurve3D({ a, b, ...configs[i] });
-    const check = checkSelfIntersection(curve, 0.05);
-    if (check.hasIntersection) {
-      // eslint-disable-next-line no-console
-      console.warn(`Self-intersection detected! minDist=${check.minDist}`);
-      // 可选：自动缩放曲线或重新生成
-    }
-
-    const ropeColor = FIXED_ROPE_COLOR;
-    const mesh = createRopeMesh(curve, { radius: tubeRadius, color: ropeColor, closed: true, tubularSegments, radialSegments });
-    const g = mesh.geometry;
-    if (mesh.material) mesh.material.dispose();
+    const smoothCurve = new THREE.CatmullRomCurve3(ringPoints[i], true, 'centripetal');
+    const g = new THREE.TubeGeometry(smoothCurve, tubularSegments, tubeRadius, radialSegments, true);
     const colors = new Float32Array(g.attributes.position.count * 3);
     const c = ringColors[i];
     for (let j = 0; j < g.attributes.position.count; j++) {
-      colors[j*3] = c.r; colors[j*3+1] = c.g; colors[j*3+2] = c.b;
+      colors[j * 3] = c.r; colors[j * 3 + 1] = c.g; colors[j * 3 + 2] = c.b;
     }
     g.setAttribute('color', new THREE.BufferAttribute(colors, 3));
     geoms.push(g);

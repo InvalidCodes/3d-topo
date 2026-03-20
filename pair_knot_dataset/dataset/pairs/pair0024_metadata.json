@@ -1,0 +1,67 @@
+{
+  "version": "3.0",
+  "id": "pair0024",
+  "label_equivalent": true,
+  "topologicalIdA": "figure8_4_1",
+  "topologicalIdB": "figure8_4_1",
+  "difficulty": "medium",
+  "difficulty_score": 0.41439126551082056,
+  "image1": "pair0024_A.png",
+  "image2": "pair0024_B.png",
+  "imageA": {
+    "knotType": "figure8",
+    "seed": 733488,
+    "deformStrength": 0.2,
+    "slackness": 0.6101949281990529,
+    "bucket_topology": "mid",
+    "bucket_saliency": "loose",
+    "trap_type": "loose_knot",
+    "cameraPosition": [
+      -5.2333420102176165,
+      -4.2835023937599725,
+      -8.429762705091006
+    ],
+    "cameraTarget": [
+      0,
+      0,
+      0
+    ],
+    "cameraFov": 52.39957339130342,
+    "color": "#f4d5ff",
+    "metalness": 0.1,
+    "roughness": 0.4,
+    "tubeRadius": 0.07,
+    "lightIntensity": 1.2,
+    "ambientIntensity": 0.9,
+    "backgroundColor": "#1a2236",
+    "gaussCode": "1o 2o 3o 4o 1u 2u 3u 4u"
+  },
+  "imageB": {
+    "knotType": "figure8",
+    "seed": 654170,
+    "deformStrength": 0.5468732136534528,
+    "slackness": 0.10433153472840787,
+    "bucket_topology": "mid",
+    "bucket_saliency": "tight",
+    "trap_type": null,
+    "cameraPosition": [
+      9.258366745569994,
+      -1.1778732424803202,
+      -8.182164799245278
+    ],
+    "cameraTarget": [
+      0,
+      0,
+      0
+    ],
+    "cameraFov": 44.999384828843176,
+    "color": "#f4d5ff",
+    "metalness": 0.1,
+    "roughness": 0.4,
+    "tubeRadius": 0.07,
+    "lightIntensity": 1.2,
+    "ambientIntensity": 0.9,
+    "backgroundColor": "#1a2236",
+    "gaussCode": "1o 2o 3o 4o 1u 2u 3u 4u"
+  }
+}

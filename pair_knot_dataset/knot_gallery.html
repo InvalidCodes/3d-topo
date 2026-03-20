@@ -196,27 +196,7 @@
       a { color: var(--cyan); text-decoration: none; }
       a:hover { text-decoration: underline; }
       
-      .tabs {
-        display: flex;
-        gap: 4px;
-        background: var(--bg);
-        padding: 4px;
-        border-radius: 8px;
-        margin-bottom: 10px;
-      }
-      .tab {
-        flex: 1;
-        padding: 8px;
-        text-align: center;
-        font-size: 11px;
-        font-weight: 600;
-        border-radius: 6px;
-        cursor: pointer;
-        transition: all 0.15s;
-        color: var(--muted);
-      }
-      .tab:hover { background: rgba(114,230,255,0.1); }
-      .tab.active { background: var(--cyan); color: var(--bg); }
+      /* tabs removed — dataset mode only */
       
       .optgroup-label {
         font-size: 10px;
@@ -238,11 +218,7 @@
           </div>
         </div>
 
-        <!-- Mode Tabs -->
-        <div class="tabs">
-          <div class="tab active" data-mode="gallery">Gallery 预览</div>
-          <div class="tab" data-mode="dataset">Dataset 生成</div>
-        </div>
+        <!-- Dataset mode only -->
 
         <!-- === 基础设置 === -->
         <div class="card">
@@ -403,8 +379,8 @@
             </div>
           </div>
           <div style="margin: 8px 0; padding: 6px; background: rgba(255,220,50,0.1); border-radius: 4px; font-size: 10px;">
-            🟡 黄环 Y: <span id="borromeanYellowYVal">0</span>
-            <input id="borromeanYellowY" type="range" min="-3" max="3" step="0.05" value="0" style="margin-top: 4px;" />
+            🟡 黄环 Y: <span id="borromeanYellowYVal">0.70</span>
+            <input id="borromeanYellowY" type="range" min="-3" max="3" step="0.05" value="0.70" style="margin-top: 4px;" />
           </div>
           <div style="padding: 6px; background: rgba(80,120,255,0.1); border-radius: 4px; font-size: 10px;">
             🔵 蓝环 Y: <span id="borromeanBlueYVal">0</span>
@@ -468,7 +444,7 @@
         </div>
 
         <!-- === Dataset 模式专用设置 === -->
-        <div class="card" id="datasetBox" style="display: none;">
+        <div class="card" id="datasetBox">
           <div class="section-title">Dataset 生成设置</div>
           <div class="row">
             <div style="flex: 1">
@@ -501,11 +477,20 @@
         <!-- === 操作按钮 === -->
         <div class="row">
           <button id="btnGenerate" class="btn-primary" style="flex: 2">生成 / 刷新</button>
-          <button id="btnExport" class="btn-gold" style="flex: 1; display: none;">导出 JSON</button>
+          <button id="btnExport" class="btn-gold" style="flex: 1;">导出 JSON</button>
         </div>
         <div class="row">
           <button id="btnCapture" class="btn-gold" style="flex: 1">📷 截图 PNG</button>
           <button id="btnBatchCapture" class="btn-gold" style="flex: 1">📷 8视角批量导出</button>
+        </div>
+        <div class="row">
+          <button id="btnFullDataset" class="btn-gold" style="flex: 1; background: #e67e22; font-weight: bold;">🚀 一键生成完整数据集 (200+)</button>
+        </div>
+        <div id="batchProgress" style="display:none; padding: 6px 8px; font-size: 12px; color: #aaa; border: 1px solid #444; border-radius: 4px; margin-top: 4px;">
+          <div id="batchProgressText">准备中...</div>
+          <div style="background: #333; border-radius: 2px; height: 6px; margin-top: 4px;">
+            <div id="batchProgressBar" style="background: #e67e22; height: 100%; width: 0%; border-radius: 2px; transition: width 0.3s;"></div>
+          </div>
         </div>
 
         <!-- === 状态显示 === -->
@@ -526,6 +511,61 @@
     </div>
 
     <script type="module" src="./src/unified-gallery.js"></script>
+    <script type="module">
+      // === 一键批量生成 ===
+      import { generateFullDataset, downloadDatasetAsZip } from './src/batch-dataset-generator.js';
+
+      const btnFullDataset = document.getElementById('btnFullDataset');
+      const progressDiv = document.getElementById('batchProgress');
+      const progressText = document.getElementById('batchProgressText');
+      const progressBar = document.getElementById('batchProgressBar');
+
+      if (btnFullDataset) {
+        btnFullDataset.addEventListener('click', async () => {
+          if (!confirm('将生成约 200+ 张图片和对应 metadata。\n这会花费几分钟，期间请勿关闭页面。\n\n继续？')) return;
+
+          btnFullDataset.disabled = true;
+          btnFullDataset.textContent = '⏳ 生成中...';
+          progressDiv.style.display = 'block';
+
+          try {
+            const dataset = await generateFullDataset(
+              {
+                seed: document.getElementById('seed')?.value || 'benchmark-v3',
+                variantsPerType: 4,
+                anglesPerVariant: 3,
+                numPairs: 50,
+                renderWidth: 1024,
+                renderHeight: 1024,
+              },
+              (cur, total, msg) => {
+                const pct = Math.round((cur / total) * 100);
+                progressText.textContent = msg;
+                progressBar.style.width = pct + '%';
+              }
+            );
+
+            progressText.textContent = `完成！共 ${dataset.stats.totalImages} 张图片。正在打包为 ZIP...`;
+
+            const zipResult = await downloadDatasetAsZip(dataset, (cur, total, msg) => {
+              progressText.textContent = msg;
+              if (total > 0) progressBar.style.width = Math.round((cur / total) * 100) + '%';
+            });
+
+            const sizeMB = (zipResult.zipSize / 1024 / 1024).toFixed(1);
+            progressText.textContent = `全部完成！ZIP 已下载 (${sizeMB} MB)`;
+            alert(`数据集 ZIP 已下载！\n- 单环 knot: ${dataset.stats.singleKnots} 组\n- 多环 link: ${dataset.stats.links} 组\n- Pair: ${dataset.stats.pairs} 对\n- 总图片: ${dataset.stats.totalImages} 张\n- ZIP 大小: ${sizeMB} MB`);
+          } catch (err) {
+            progressText.textContent = `错误: ${err.message}`;
+            console.error('Batch generation error:', err);
+            alert('生成失败: ' + err.message);
+          } finally {
+            btnFullDataset.disabled = false;
+            btnFullDataset.textContent = '🚀 一键生成完整数据集 (200+)';
+          }
+        });
+      }
+    </script>
     <script>
       // === UI 同步逻辑 ===
       (function () {
@@ -537,19 +577,7 @@
         const spiralLoopBox = document.getElementById('spiralLoopBox');
         const datasetBox = document.getElementById('datasetBox');
         const btnExport = document.getElementById('btnExport');
-        const tabs = document.querySelectorAll('.tab');
-        
-        let currentMode = 'gallery';
-        
-        // Tab 切换
-        tabs.forEach(tab => {
-          tab.addEventListener('click', () => {
-            tabs.forEach(t => t.classList.remove('active'));
-            tab.classList.add('active');
-            currentMode = tab.dataset.mode;
-            syncUI();
-          });
-        });
+        let currentMode = 'dataset';
         
         // 折叠面板
         document.querySelectorAll('.collapsible').forEach(el => {

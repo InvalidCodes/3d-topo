@@ -1,0 +1,50 @@
+{
+  "version": "3.0",
+  "id": "torus_2_5_s0.25_d0.21_v3",
+  "knotType": "torus_2_5",
+  "topologicalId": "cinquefoil_5_1",
+  "isKnot": true,
+  "isUnknot": false,
+  "isDeceptive": false,
+  "isLink": false,
+  "numComponents": 1,
+  "crossingNumber": 5,
+  "family": "TORUS",
+  "seed": 166958,
+  "slackness": 0.25,
+  "deformStrength": 0.214652862213552,
+  "bucket_topology": "mid",
+  "bucket_saliency": "tight",
+  "trap_type": null,
+  "difficulty_score": 0.288,
+  "difficulty": "easy",
+  "images": [
+    {
+      "filename": "torus_2_5_s0.25_d0.21_v3_iso_fr.png",
+      "cameraAngle": "iso_fr",
+      "cameraPos": [
+        3.5,
+        3.5,
+        5
+      ]
+    },
+    {
+      "filename": "torus_2_5_s0.25_d0.21_v3_front.png",
+      "cameraAngle": "front",
+      "cameraPos": [
+        0,
+        1.5,
+        6
+      ]
+    },
+    {
+      "filename": "torus_2_5_s0.25_d0.21_v3_oblique.png",
+      "cameraAngle": "oblique",
+      "cameraPos": [
+        2,
+        6,
+        3
+      ]
+    }
+  ]
+}

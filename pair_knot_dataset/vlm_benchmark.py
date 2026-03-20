@@ -1,16 +1,20 @@
 #!/usr/bin/env python3
 """
-vlm_benchmark.py - Knot topology VLM benchmark script.
+vlm_benchmark.py - Knot topology VLM benchmark (v3).
+
+10 tasks across 4 groups:
+  - Group 1 (T01-T04): Knottedness — is it a knot?
+  - Group 2 (T06, T09): Classification — what kind / deceptive?
+  - Group 3 (T10-T12): Multi-component — links and chains
+  - Group 4 (T13): Pair comparison — two images
+
+Removed by mentor review: T05 (subjective confidence), T07 (too specific torus pq),
+T08 (too specific trefoil), T14 (subjective complexity comparison),
+T15 (no chirality data in dataset, B class empty).
 
 Usage:
-  # Debug on a few single-image samples
-  python vlm_benchmark.py --data_dir ./exports --tasks T1_knotted --limit 5
-
-  # Run all tasks
-  python vlm_benchmark.py --data_dir ./exports --tasks all --output results.json
-
-  # Evaluate only hard samples
-  python vlm_benchmark.py --data_dir ./exports --tasks T1_knotted --difficulty hard
+  python vlm_benchmark.py --data_dir ./dataset --tasks all --limit 5
+  python vlm_benchmark.py --data_dir ./dataset --tasks T01_knotted_direct --difficulty hard
 
 Dependencies:
   pip install openai
@@ -25,6 +29,7 @@ import argparse
 import base64
 import json
 import os
+import re
 import sys
 import time
 from pathlib import Path
@@ -32,19 +37,25 @@ from typing import Any
 
 from openai import OpenAI
 
+from question_phrasings import PHRASINGS, ANSWER_FORMATS, build_prompt, num_phrasings
+
+
+# ═══════════════════════════════════════════════════════════════════
+# TASK DEFINITIONS — 10 active tasks (T05/T07/T08/T14/T15 removed)
+# ═══════════════════════════════════════════════════════════════════
 
 TASKS = {
 
-    # ──────────────────────────────────────────────────────────
-    # 第一组：最核心问题 — 是结还是环？（5个，从直接到迂回）
-    # ──────────────────────────────────────────────────────────
+    # ── Group 1: Knottedness (5 tasks) ────────────────────────────
 
     "T01_knotted_direct": {
         "applicable": "single",
         "prompt": (
             "Look at this 3D image of a closed rope loop.\n"
-            "Is this rope KNOTTED (tied in a knot that cannot be undone without cutting) "
-            "or UNKNOTTED (a simple loop with no knot)?\n\n"
+            "A knotted loop has places where the rope clearly crosses over and under "
+            "itself in an interlocking pattern that cannot be untangled without cutting.\n"
+            "An unknotted loop may look wavy or twisted but has no true over-under crossings.\n\n"
+            "Is this rope KNOTTED or UNKNOTTED?\n\n"
             "First line: one word only — KNOTTED or UNKNOTTED\n"
             "Second line: one sentence describing the key visual evidence."
         ),
@@ -59,224 +70,166 @@ TASKS = {
             "1. How many places does the rope cross over or under itself?\n"
             "2. If you could grab both sides of a crossing, could you slide them apart?\n"
             "3. Based on this, is the rope truly knotted or just tangled-looking?\n\n"
-            "First line: one word only — KNOTTED or UNKNOTTED"
+            "Final answer on the LAST line: one word only — KNOTTED or UNKNOTTED"
         ),
         "parse_key": "KNOTTED|UNKNOTTED",
         "answer_fn": "is_knotted",
+        "parse_mode": "last_line",
     },
 
     "T03_crossing_count": {
         "applicable": "single",
         "prompt": (
             "Look at this 3D image of a closed rope loop.\n"
-            "Count the number of crossings — places where the rope passes over or under itself.\n\n"
-            "First line: one choice only —\n"
-            "A) 0 crossings (simple loop)\n"
-            "B) 1–3 crossings\n"
-            "C) 4–6 crossings\n"
-            "D) 7 or more crossings\n\n"
-            "First line: the letter A, B, C, or D only."
+            "Count the places where one section of rope passes over or under another.\n"
+            "A crossing is where you can see one strand going OVER while another goes UNDER.\n"
+            "Note: a trefoil knot has 3 crossings, and complex knots can have 7-10+.\n\n"
+            "Choose one:\n"
+            "  A) 0 crossings — simple loop, no over-under patterns\n"
+            "  B) 3-4 crossings — simple knot (e.g. trefoil, figure-eight)\n"
+            "  C) 5-7 crossings — moderately complex knot\n"
+            "  D) 8 or more crossings — very complex knot\n\n"
+            "Answer with the letter only: A, B, C, or D."
         ),
         "parse_key": "A|B|C|D",
-        "answer_fn": "crossing_bucket",   # 见 get_ground_truth()
+        "answer_fn": "crossing_bucket",
     },
 
     "T04_can_untie": {
         "applicable": "single",
         "prompt": (
             "Look at this 3D image of a closed rope loop.\n"
-            "If you could manipulate this rope freely without cutting it, "
-            "could you reshape it into a perfect flat circle?\n\n"
-            "First line: one word only — YES or NO\n"
-            "Second line: one sentence explaining your reasoning."
+            "Could this loop be smoothly deformed into a perfect flat circle "
+            "WITHOUT cutting the rope?\n\n"
+            "Answer with one word only: YES or NO."
         ),
         "parse_key": "YES|NO",
-        "answer_fn": "can_untie",    # unknot → YES, knot → NO
+        "answer_fn": "can_untie",
     },
 
-    "T05_confidence": {
+    # T05_confidence — REMOVED (mentor: subjective, can't ground truth confidence level)
+
+    # ── Group 2: Classification (2 tasks) ─────────────────────────
+
+    "T06_knot_family": {
         "applicable": "single",
         "prompt": (
             "Look at this 3D image of a closed rope loop.\n"
-            "Is this rope knotted or unknotted, and how confident are you?\n\n"
-            "First line must be EXACTLY one of these four options:\n"
-            "DEFINITELY_KNOTTED\n"
-            "PROBABLY_KNOTTED\n"
-            "PROBABLY_UNKNOTTED\n"
-            "DEFINITELY_UNKNOTTED\n\n"
-            "First line: one of the four options above only."
+            "Which knot family does it most likely belong to?\n\n"
+            "Choose one:\n"
+            "  UNKNOT — a simple loop with no genuine over-under crossings; "
+            "may appear wavy or twisted but can be smoothed into a circle\n"
+            "  TORUS — a torus knot (e.g. trefoil, cinquefoil); "
+            "has 3 or more lobes arranged symmetrically like a clover or star, "
+            "with a repeating over-under weaving pattern\n"
+            "  TWIST — a twist knot (e.g. figure-eight); "
+            "forms a flattened pretzel shape with a central twist region "
+            "where strands cross back and forth\n"
+            "  OTHER — none of the above, or too complex to tell\n\n"
+            "Answer with one word only: UNKNOT, TORUS, TWIST, or OTHER."
         ),
-        "parse_key": "DEFINITELY_KNOTTED|PROBABLY_KNOTTED|PROBABLY_UNKNOTTED|DEFINITELY_UNKNOTTED",
-        "answer_fn": "is_knotted_confidence",   # 见 get_ground_truth()
+        "parse_key": "UNKNOT|TORUS|TWIST|OTHER",
+        "answer_fn": "knot_family",
     },
 
-    # ──────────────────────────────────────────────────────────
-    # 第二组：形状性质 — 关于 loop 视觉特征（4个）
-    # ──────────────────────────────────────────────────────────
+    # T07_torus_pq — REMOVED (mentor: too specific, requires mathematical knowledge)
+    # T08_trefoil_or_not — REMOVED (mentor: too specific, testing name recognition not topology)
 
-    "T06_shape_symmetry": {
+    "T09_loose_knot_trap": {
         "applicable": "single",
+        "filter_fn": "is_trap_candidate",
         "prompt": (
-            "Look at this 3D image of a closed rope loop.\n"
-            "Does this rope form a shape with obvious rotational symmetry "
-            "(e.g., the same pattern repeating 2, 3, or more times around a center)?\n\n"
-            "First line: one word only — SYMMETRIC or ASYMMETRIC"
+            "Look at this 3D image of a closed rope loop that appears complex.\n"
+            "Examine the crossings carefully: does the rope form genuine "
+            "over-under interlocking crossings that prevent unknotting, "
+            "or could every apparent crossing be removed by sliding the rope?\n\n"
+            "A real knot has strands that lock around each other.\n"
+            "A loose illusion has strands that merely overlap without locking.\n\n"
+            "Answer: ACTUAL_KNOT if it is truly knotted, "
+            "LOOSE_ILLUSION if it only looks knotted but is actually unknotted."
         ),
-        "parse_key": "SYMMETRIC|ASYMMETRIC",
-        "answer_fn": "is_symmetric",   # torus knots → SYMMETRIC, others → depends
+        "parse_key": "ACTUAL_KNOT|LOOSE_ILLUSION",
+        "answer_fn": "is_actual_knot",
     },
 
-    "T07_shape_flat": {
-        "applicable": "single",
-        "prompt": (
-            "Look at this 3D image of a closed rope loop.\n"
-            "Does the rope lie mostly FLAT (close to a single plane), "
-            "or does it have significant 3D DEPTH (extends clearly in three dimensions)?\n\n"
-            "First line: one word only — FLAT or DEEP"
-        ),
-        "parse_key": "FLAT|DEEP",
-        "answer_fn": "is_flat",   # high slackness → FLAT, low slackness → DEEP
-    },
+    # ── Group 3: Multi-component (3 tasks) ────────────────────────
 
-    "T08_shape_simple": {
-        "applicable": "single",
-        "prompt": (
-            "Look at this 3D image of a closed rope loop.\n"
-            "Does the rope form a SIMPLE shape (roughly circular or oval, easy to follow), "
-            "or a COMPLEX shape (tangled, hard to trace the full path)?\n\n"
-            "First line: one word only — SIMPLE or COMPLEX"
-        ),
-        "parse_key": "SIMPLE|COMPLEX",
-        "answer_fn": "is_simple",  # unknot/high-slack → SIMPLE, tight knot → COMPLEX
-    },
-
-    "T09_knot_family": {
-        "applicable": "single",
-        "prompt": (
-            "Look at this 3D image of a knotted rope.\n"
-            "Which best describes what you see?\n\n"
-            "A) A simple loop — no real crossings, rope forms an oval or circle\n"
-            "B) A trefoil knot — 3 crossings, three-lobed symmetric shape\n"
-            "C) A figure-eight knot — 4 crossings, figure-8 or pretzel shape\n"
-            "D) A more complex knot — 5 or more crossings\n\n"
-            "First line: the letter A, B, C, or D only."
-        ),
-        "parse_key": "A|B|C|D",
-        "answer_fn": "knot_family_label",
-    },
-
-    # ──────────────────────────────────────────────────────────
-    # 第三组：多环问题 — 仅用于 link 类型样本（3个）
-    # ──────────────────────────────────────────────────────────
-
-    "T10_linked": {
+    "T10_linked_or_not": {
         "applicable": "multi",
         "prompt": (
-            "Look at this 3D image showing multiple rope loops.\n"
-            "Are any two loops LINKED (interlocked so they cannot be separated without cutting) "
-            "or are all loops UNLINKED (can be pulled apart freely)?\n\n"
-            "First line: one word only — LINKED or UNLINKED"
+            "You are shown an image containing multiple closed rope loops.\n"
+            "Are any of the loops linked together (i.e., cannot be separated "
+            "without cutting)?\n\n"
+            "Answer with one word only: LINKED or UNLINKED."
         ),
         "parse_key": "LINKED|UNLINKED",
         "answer_fn": "is_linked",
     },
 
-    "T11_count_loops": {
+    "T11_hopflink_or_not": {
         "applicable": "multi",
         "prompt": (
-            "Look at this 3D image of rope loops.\n"
-            "How many separate rope loops can you count?\n\n"
-            "First line: one choice only —\n"
-            "A) 1 loop\n"
-            "B) 2 loops\n"
-            "C) 3 loops\n"
-            "D) 4 or more loops\n\n"
-            "First line: the letter A, B, C, or D only."
+            "You are shown an image containing closed rope loops.\n"
+            "A Hopf link is the simplest 2-component link: exactly two rings, "
+            "each passing through the other exactly once.\n\n"
+            "Important: chain links (3+ rings in a row), Borromean rings "
+            "(3 rings mutually interlocked), and unlinked rings are NOT Hopf links.\n\n"
+            "Is this a Hopf link?\n"
+            "Answer with one word only: HOPF or NOT_HOPF."
         ),
-        "parse_key": "A|B|C|D",
-        "answer_fn": "num_loops_label",
+        "parse_key": "HOPF|NOT_HOPF",
+        "answer_fn": "is_hopf",
     },
 
-    "T12_splittable": {
+    "T12_link_components": {
         "applicable": "multi",
         "prompt": (
-            "Look at this 3D image of multiple rope loops.\n"
-            "Can these loops be SPLIT into two groups by an imaginary flat plane, "
-            "with no rope cut and no loop passing through the plane?\n"
-            "(Example: two separate rings sitting side by side = SPLITTABLE)\n\n"
-            "First line: one word only — SPLITTABLE or NON-SPLITTABLE"
+            "You are shown an image containing multiple closed rope loops.\n"
+            "How many separate loop components are present?\n\n"
+            "Answer with a single integer (e.g., 2, 3, 4)."
         ),
-        "parse_key": "SPLITTABLE|NON-SPLITTABLE",
-        "answer_fn": "is_splittable",
+        "parse_key": "INTEGER",
+        "answer_fn": "num_components",
     },
 
-    # ──────────────────────────────────────────────────────────
-    # 第四组：配对对比 — 两张图对比（3个）
-    # ──────────────────────────────────────────────────────────
+    # ── Group 4: Pair comparison (1 task) ─────────────────────────
 
-    "T13_same_type": {
+    "T13_same_knot_type": {
         "applicable": "pair",
         "prompt": (
             "You are shown Image 1 and Image 2, each showing a closed rope loop.\n"
-            "Are these two ropes the SAME knot type (topologically equivalent — "
-            "one could be reshaped into the other without cutting), "
-            "or are they DIFFERENT knot types?\n\n"
-            "First line: one word only — SAME or DIFFERENT"
+            "Are they the SAME knot type (topologically equivalent — "
+            "one could be continuously deformed into the other without cutting), "
+            "or DIFFERENT knot types?\n\n"
+            "Answer with one word only: SAME or DIFFERENT."
         ),
         "parse_key": "SAME|DIFFERENT",
         "answer_fn": "label_equivalent",
     },
 
-    "T14_which_harder": {
-        "applicable": "pair",
-        "prompt": (
-            "You are shown Image 1 and Image 2, each showing a closed rope loop.\n"
-            "Which rope appears MORE COMPLEX or harder to untangle visually?\n\n"
-            "First line: one word only — IMAGE1 or IMAGE2 or EQUAL"
-        ),
-        "parse_key": "IMAGE1|IMAGE2|EQUAL",
-        "answer_fn": "which_harder",   # 基于 difficulty_score 比较
-    },
-
-    "T15_same_or_mirror": {
-        "applicable": "pair",
-        "prompt": (
-            "You are shown Image 1 and Image 2, each showing a closed rope loop.\n"
-            "They might be:\n"
-            "A) The same knot type, same handedness (identical topology)\n"
-            "B) Mirror images of each other (same knot, opposite handedness)\n"
-            "C) Completely different knot types\n\n"
-            "First line: the letter A, B, or C only."
-        ),
-        "parse_key": "A|B|C",
-        "answer_fn": "mirror_label",   # 需要 metadata 里有手性信息
-    },
+    # T14_which_more_complex — REMOVED (mentor: subjective, "more complex" not well-defined)
+    # T15_same_or_mirror — REMOVED (mentor: no chirality data in dataset, B class empty)
 }
 
+# Verify: 10 active tasks
+assert len(TASKS) == 10, f"Expected 10 tasks, got {len(TASKS)}"
+
+
+# ═══════════════════════════════════════════════════════════════════
+# DIFFICULTY COMPUTATION
+# ═══════════════════════════════════════════════════════════════════
 
 def compute_difficulty(metadata: dict[str, Any]) -> dict[str, Any]:
-    """
-    Compute a difficulty score (0-1) and level from metadata.
-    """
-    c_min = metadata.get("crossingNumber")
-    if c_min is None:
-        c_min = metadata.get("crossing_number", 0)
-    try:
-        c_min_value = float(c_min)
-    except (TypeError, ValueError):
-        c_min_value = 0.0
-
-    try:
-        slackness = float(metadata.get("slackness", 0))
-    except (TypeError, ValueError):
-        slackness = 0.0
-    slackness = max(0.0, min(1.0, slackness))
-
+    """Compute difficulty score (0-1) and level from metadata."""
+    crossing = _safe_float(metadata.get("crossingNumber",
+                           metadata.get("crossing_number", 0)))
+    slackness = max(0.0, min(1.0, _safe_float(metadata.get("slackness", 0))))
     trap = metadata.get("trap_type")
+    is_deceptive = metadata.get("isDeceptive", False)
 
-    score_topology = min(c_min_value / 10.0, 1.0)
+    score_topology = min(crossing / 10.0, 1.0)
     score_saliency = slackness
-    score_trap = 0.3 if trap else 0.0
+    score_trap = 0.3 if (trap or is_deceptive) else 0.0
 
     difficulty = 0.35 * score_topology + 0.45 * score_saliency + 0.20 * score_trap
 
@@ -290,6 +243,286 @@ def compute_difficulty(metadata: dict[str, Any]) -> dict[str, Any]:
     return {"score": round(difficulty, 3), "level": level}
 
 
+def _safe_float(v: Any) -> float:
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+# ═══════════════════════════════════════════════════════════════════
+# ANSWER PARSING — robust extraction from VLM responses
+# ═══════════════════════════════════════════════════════════════════
+
+def parse_answer(raw: str, task_id: str) -> str:
+    """Extract the answer keyword from VLM response."""
+    if not raw or not raw.strip():
+        return "unclear"
+
+    task = TASKS.get(task_id, {})
+    parse_key = task.get("parse_key", "")
+    parse_mode = task.get("parse_mode", "first_line")
+
+    # Special: integer parsing for T12
+    if parse_key == "INTEGER":
+        return _parse_integer(raw)
+
+    keys = [k for k in parse_key.split("|") if k]
+    if not keys:
+        return "unclear"
+
+    # Pick the right line
+    lines = [l.strip() for l in raw.strip().splitlines() if l.strip()]
+    if not lines:
+        return "unclear"
+
+    target_line = lines[-1] if parse_mode == "last_line" else lines[0]
+
+    # Normalize: uppercase, strip common prefixes/suffixes
+    normalized = target_line.upper()
+    normalized = re.sub(r'^(ANSWER|RESPONSE|MY ANSWER|FINAL ANSWER)\s*[:：]\s*', '', normalized)
+    normalized = normalized.strip("`\"'[]{}()<>.,;:!?* ")
+
+    # Direct match: exact key in normalized line
+    for key in keys:
+        if normalized == key:
+            return key
+
+    # Starts-with match
+    for key in keys:
+        if normalized.startswith(key):
+            return key
+
+    # Contains match (for responses like "The answer is KNOTTED")
+    for key in keys:
+        # Use word boundary to avoid partial matches
+        pattern = r'\b' + re.escape(key) + r'\b'
+        if re.search(pattern, normalized):
+            return key
+
+    # Letter match for A/B/C/D tasks: handle "B)" or "B." or "Option B"
+    if all(len(k) <= 2 for k in keys):
+        first_char = normalized.lstrip("OPTION ")[0:1] if normalized else ""
+        for key in keys:
+            if first_char == key:
+                return key
+
+    # T05 special: accept direction even if confidence level differs
+    # (handled in scoring, not parsing)
+
+    return "unclear"
+
+
+def _parse_integer(raw: str) -> str:
+    """Extract first integer from response."""
+    lines = [l.strip() for l in raw.strip().splitlines() if l.strip()]
+    for line in lines:
+        nums = re.findall(r'\b(\d+)\b', line)
+        if nums:
+            return nums[0]
+    return "unclear"
+
+
+# ═══════════════════════════════════════════════════════════════════
+# GROUND TRUTH — derive correct answer from metadata
+# ═══════════════════════════════════════════════════════════════════
+
+# Knot type → family mapping
+_FAMILY_MAP = {
+    "unknot": "UNKNOT", "twisted_ring": "UNKNOT", "kinky_unknot": "UNKNOT",
+    "spiral_disk": "UNKNOT",
+    "trefoil": "TORUS", "loose_open_knot": "TORUS",  # loose_open_knot is a loose trefoil
+    "torus_2_5": "TORUS", "torus_2_7": "TORUS",
+    "torus_2_9": "TORUS", "torus_3_4": "TORUS", "torus_3_5": "TORUS",
+    "figure8": "TWIST",
+}
+
+# Knot type → torus (p,q) label
+_TORUS_PQ_MAP = {
+    "trefoil": "A",      # T(2,3)
+    "torus_2_5": "B",    # T(2,5)
+    "torus_2_7": "C",    # T(2,7)
+    "torus_3_4": "D",    # T(3,4)
+    "torus_3_5": "E",    # T(3,5)
+}
+
+# Symmetric knot types (have rotational symmetry)
+_SYMMETRIC_TYPES = {
+    "unknot", "trefoil", "torus_2_5", "torus_2_7", "torus_2_9",
+    "torus_3_4", "torus_3_5",
+}
+
+# Deceptive unknot types (look knotted but are unknotted)
+_DECEPTIVE_TYPES = {"twisted_ring", "spiral_disk", "kinky_unknot"}
+
+
+def get_ground_truth(metadata: dict, task_id: str) -> str | None:
+    """Derive ground truth answer from metadata for a given task."""
+    kt = metadata.get("knotType", "")
+    is_knot = metadata.get("isKnot", False)
+    is_unknot = metadata.get("isUnknot", True)
+    is_link = metadata.get("isLink", False)
+    is_deceptive = metadata.get("isDeceptive", False)
+    crossing = metadata.get("crossingNumber") or 0
+    slackness = _safe_float(metadata.get("slackness", 0))
+    trap_type = metadata.get("trap_type")
+
+    # ── Group 1: Knottedness ──
+
+    if task_id in ("T01_knotted_direct", "T02_knotted_cot"):
+        return "KNOTTED" if is_knot else "UNKNOTTED"
+
+    if task_id == "T03_crossing_count":
+        c = int(crossing) if crossing else 0
+        if c == 0:
+            return "A"
+        if c <= 4:
+            return "B"
+        if c <= 7:
+            return "C"
+        return "D"
+
+    if task_id == "T04_can_untie":
+        return "YES" if not is_knot else "NO"
+
+    # T05 removed
+
+    # ── Group 2: Classification ──
+
+    if task_id == "T06_knot_family":
+        return _FAMILY_MAP.get(kt, "OTHER")
+
+    # T07, T08 removed
+
+    if task_id == "T09_loose_knot_trap":
+        # Deceptive unknots → LOOSE_ILLUSION; actual knots → ACTUAL_KNOT
+        if kt in _DECEPTIVE_TYPES or (is_deceptive and not is_knot):
+            return "LOOSE_ILLUSION"
+        return "ACTUAL_KNOT"
+
+    # ── Group 3: Multi-component ──
+
+    if task_id == "T10_linked_or_not":
+        if not is_link:
+            return "UNLINKED"
+        return "UNLINKED" if kt == "unlinked_rings" else "LINKED"
+
+    if task_id == "T11_hopflink_or_not":
+        return "HOPF" if kt == "hopf_link" else "NOT_HOPF"
+
+    if task_id == "T12_link_components":
+        num = metadata.get("numComponents")
+        if num is None:
+            # Infer from type
+            if kt == "hopf_link" or kt == "unlinked_rings":
+                num = 2
+            elif kt == "borromean":
+                num = 3
+            elif kt == "chain":
+                num = metadata.get("chainLinks", 3)
+            elif is_link:
+                num = 2
+            else:
+                num = 1
+        return str(int(num))
+
+    # ── Group 4: Pair comparison ──
+
+    if task_id == "T13_same_knot_type":
+        equiv = metadata.get("label_equivalent", False)
+        return "SAME" if equiv else "DIFFERENT"
+
+    # T14, T15 removed
+
+    return None
+
+
+# ═══════════════════════════════════════════════════════════════════
+# SCORING — more nuanced than exact match for some tasks
+# ═══════════════════════════════════════════════════════════════════
+
+def score_answer(parsed: str, gt: str, task_id: str) -> dict[str, Any]:
+    """
+    Score a parsed answer against ground truth.
+    Returns {correct: bool, partial: bool, detail: str}.
+    """
+    if gt is None or parsed == "unclear":
+        return {"correct": False, "partial": False, "detail": "missing"}
+
+    # T12: integer comparison
+    if task_id == "T12_link_components":
+        try:
+            return {
+                "correct": int(parsed) == int(gt),
+                "partial": abs(int(parsed) - int(gt)) == 1,
+                "detail": f"pred={parsed},gt={gt}",
+            }
+        except ValueError:
+            return {"correct": False, "partial": False, "detail": "parse_fail"}
+
+    # Default: exact match
+    return {
+        "correct": parsed == gt,
+        "partial": False,
+        "detail": "exact" if parsed == gt else f"pred={parsed},gt={gt}",
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════
+# SAMPLE FILTERING — which samples apply to which tasks
+# ═══════════════════════════════════════════════════════════════════
+
+_LINK_TYPES = {"hopf_link", "unlinked_rings", "chain", "borromean"}
+_KNOWN_KNOT_TYPES = set(_FAMILY_MAP.keys()) | _LINK_TYPES
+_EXCLUDED_TYPES: set[str] = set()  # No excluded types currently
+
+
+def sample_applicable(metadata: dict, task_id: str) -> bool:
+    """Check if this sample should be tested with this task."""
+    task = TASKS.get(task_id)
+    if not task:
+        return False
+
+    applicable = task["applicable"]
+    kt = metadata.get("knotType", "")
+    # Detect links: explicit flag OR known link type
+    is_link = metadata.get("isLink", False) or (kt in _LINK_TYPES)
+    is_knot = metadata.get("isKnot", False)
+    is_deceptive = metadata.get("isDeceptive", False)
+
+    # Skip excluded/unknown types
+    if kt in _EXCLUDED_TYPES:
+        return False
+
+    # Basic type filtering
+    if applicable == "single" and is_link:
+        return False
+    if applicable == "multi" and not is_link:
+        return False
+    if applicable == "pair" and "label_equivalent" not in metadata:
+        return False
+
+    # Task-specific filters
+    filter_fn = task.get("filter_fn")
+
+    if filter_fn == "is_torus_knot":
+        # T07: only show to torus knots (and a few non-torus for F option)
+        family = _FAMILY_MAP.get(kt, "OTHER")
+        return family == "TORUS" or (is_knot and family != "TORUS")
+
+    if filter_fn == "is_trap_candidate":
+        # T09: only types relevant to the loose-knot trap scenario:
+        # deceptive unknots + low-crossing knots that could be confused
+        _T09_RELEVANT_KNOTS = {"trefoil", "figure8", "loose_open_knot"}
+        return is_deceptive or kt in _T09_RELEVANT_KNOTS
+
+    return True
+
+
+# ═══════════════════════════════════════════════════════════════════
+# VLM API INTERACTION
+# ═══════════════════════════════════════════════════════════════════
+
 def encode_image(path: str) -> str:
     with open(path, "rb") as f:
         return base64.b64encode(f.read()).decode("utf-8")
@@ -300,11 +533,14 @@ def ask_vlm(client: OpenAI, model: str, prompt: str, image_paths: list[str]) -> 
     content: list[dict[str, Any]] = []
     for i, path in enumerate(image_paths):
         if len(image_paths) > 1:
-            content.append({"type": "text", "text": f"Image {i + 1}:"})
+            content.append({"type": "text", "text": f"[Image {i + 1}]"})
         content.append(
             {
                 "type": "image_url",
-                "image_url": {"url": f"data:image/png;base64,{encode_image(path)}"},
+                "image_url": {
+                    "url": f"data:image/png;base64,{encode_image(path)}",
+                    "detail": "high",
+                },
             }
         )
     content.append({"type": "text", "text": prompt})
@@ -312,234 +548,16 @@ def ask_vlm(client: OpenAI, model: str, prompt: str, image_paths: list[str]) -> 
     response = client.chat.completions.create(
         model=model,
         messages=[{"role": "user", "content": content}],
-        max_completion_tokens=150,
+        max_completion_tokens=200,
         temperature=0,
     )
     text = response.choices[0].message.content
     return (text or "").strip()
 
 
-def _first_keyword(raw_response: str) -> str:
-    first_line = (raw_response or "").splitlines()[0].strip() if raw_response else ""
-    if not first_line:
-        return ""
-
-    token = first_line.split()[0]
-    token = token.strip("`\"'[]{}()<>.,;:!?")
-    token = token.rstrip(").,;:!?")
-    return token.upper()
-
-
-def parse_answer(raw: str, task_id: str) -> str:
-    """从 VLM 回答的第一行提取关键词"""
-    first_line = (raw or "").splitlines()[0].strip().upper()
-    # 去掉标点
-    first_word = first_line.split()[0].strip(".,;:!?\"'()[]") if first_line else ""
-
-    task = TASKS.get(task_id, {})
-    keys = task.get("parse_key", "").split("|")
-
-    for key in keys:
-        if first_word == key or first_line.startswith(key):
-            return key
-
-    return "unclear"
-
-
-def _as_bool(value: Any) -> bool | None:
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, (int, float)):
-        return value != 0
-    if isinstance(value, str):
-        v = value.strip().lower()
-        if v in {"1", "true", "yes", "y", "linked", "knotted", "equivalent", "splittable"}:
-            return True
-        if v in {
-            "0",
-            "false",
-            "no",
-            "n",
-            "unlinked",
-            "unknotted",
-            "different",
-            "non-splittable",
-            "non_splittable",
-        }:
-            return False
-    return None
-
-
-def get_ground_truth(metadata: dict, task_id: str):
-    """从 metadata.json 提取每个 task 的正确答案"""
-
-    kt = metadata.get("knotType", "")
-    is_knot = metadata.get("isKnot", False)
-    is_link = metadata.get("isLink", False)
-    crossing = metadata.get("crossingNumber") or 0
-    slackness = metadata.get("slackness", 0)
-
-    if task_id == "T01_knotted_direct":
-        return "KNOTTED" if is_knot else "UNKNOTTED"
-
-    if task_id == "T02_knotted_cot":
-        return "KNOTTED" if is_knot else "UNKNOTTED"
-
-    if task_id == "T03_crossing_count":
-        c = crossing or 0
-        if c == 0: return "A"
-        if c <= 3: return "B"
-        if c <= 6: return "C"
-        return "D"
-
-    if task_id == "T04_can_untie":
-        # unknot 可以解开，knot 不能
-        return "YES" if not is_knot else "NO"
-
-    if task_id == "T05_confidence":
-        # 高 slackness 的结 → 视觉上模糊，ground truth 仍然确定，但我们
-        # 期待 VLM 在高 slackness 时回答 PROBABLY 而不是 DEFINITELY
-        return "DEFINITELY_KNOTTED" if is_knot else "DEFINITELY_UNKNOTTED"
-
-    if task_id == "T06_shape_symmetry":
-        # torus knots 有旋转对称性
-        symmetric_types = {"trefoil", "torus_2_5", "torus_2_7", "torus_2_9",
-                           "torus_3_4", "torus_3_5", "unknot"}
-        return "SYMMETRIC" if kt in symmetric_types else "ASYMMETRIC"
-
-    if task_id == "T07_shape_flat":
-        # slackness > 0.6 时绳子被压平
-        return "FLAT" if slackness > 0.6 else "DEEP"
-
-    if task_id == "T08_shape_simple":
-        # unknot 或高 slackness 的结看起来简单
-        if not is_knot:
-            return "SIMPLE"
-        return "SIMPLE" if slackness > 0.7 else "COMPLEX"
-
-    if task_id == "T09_knot_family":
-        mapping = {
-            "unknot": "A", "twisted_ring": "A", "kinky_unknot": "A", "spiral_disk": "A",
-            "trefoil": "B",
-            "figure8": "C",
-        }
-        return mapping.get(kt, "D")  # 其他复杂结 → D
-
-    if task_id == "T10_linked":
-        # isLink 且不是 unlinked_rings → LINKED
-        if not is_link:
-            return "UNLINKED"
-        return "UNLINKED" if kt == "unlinked_rings" else "LINKED"
-
-    if task_id == "T11_count_loops":
-        num = metadata.get("numComponents") or (2 if is_link else 1)
-        if num == 1: return "A"
-        if num == 2: return "B"
-        if num == 3: return "C"
-        return "D"
-
-    if task_id == "T12_splittable":
-        return "SPLITTABLE" if kt == "unlinked_rings" else "NON-SPLITTABLE"
-
-    if task_id == "T13_same_type":
-        equiv = metadata.get("label_equivalent", False)
-        return "SAME" if equiv else "DIFFERENT"
-
-    if task_id == "T14_which_harder":
-        # 需要 pair metadata，这里留给 pair 处理逻辑
-        score_a = metadata.get("difficulty_score_a", 0)
-        score_b = metadata.get("difficulty_score_b", 0)
-        if abs(score_a - score_b) < 0.1:
-            return "EQUAL"
-        return "IMAGE1" if score_a > score_b else "IMAGE2"
-
-    if task_id == "T15_same_or_mirror":
-        # 需要手性信息，暂时用 equivalent 字段代替
-        equiv = metadata.get("label_equivalent", False)
-        return "A" if equiv else "C"
-
-    return None
-
-
-def sample_applicable(metadata: dict, task_id: str) -> bool:
-    """判断这个样本是否应该被这个 task 测试"""
-    task = TASKS.get(task_id)
-    if not task:
-        return False
-
-    applicable = task["applicable"]
-    is_link = metadata.get("isLink", False)
-
-    if applicable == "single":
-        return not is_link          # 非多环样本
-
-    if applicable == "multi":
-        return bool(is_link)        # 只有多环样本
-
-    if applicable == "pair":
-        return "label_equivalent" in metadata   # 有配对标签的样本
-
-    return False
-
-
-def print_report(results: list[dict[str, Any]]) -> None:
-    """Print accuracy report grouped by task and difficulty."""
-    print("\n" + "=" * 60)
-    print("VLM BENCHMARK RESULTS")
-    print("=" * 60)
-
-    if not results:
-        print("\nNo valid results to report.")
-        return
-
-    by_task: dict[str, dict[str, Any]] = {}
-    for r in results:
-        task = r["task"]
-        if task not in by_task:
-            by_task[task] = {
-                "total": 0,
-                "correct": 0,
-                "by_difficulty": {},
-            }
-
-        by_task[task]["total"] += 1
-        if r.get("correct"):
-            by_task[task]["correct"] += 1
-
-        diff = r.get("difficulty_level", "unknown")
-        diff_stats = by_task[task]["by_difficulty"]
-        if diff not in diff_stats:
-            diff_stats[diff] = {"total": 0, "correct": 0}
-        diff_stats[diff]["total"] += 1
-        if r.get("correct"):
-            diff_stats[diff]["correct"] += 1
-
-    for task, stats in by_task.items():
-        total = stats["total"]
-        correct = stats["correct"]
-        acc = correct / total if total > 0 else 0.0
-        print(f"\n[{task}] Accuracy: {acc:.1%} ({correct}/{total})")
-
-        for level in ["easy", "medium", "hard", "unknown"]:
-            d = stats["by_difficulty"].get(level, {})
-            if d.get("total", 0) > 0:
-                d_acc = d["correct"] / d["total"]
-                print(f"  {level:8s}: {d_acc:.1%} ({d['correct']}/{d['total']})")
-
-    print("\n-- Trap Type Analysis --")
-    trap_stats: dict[str, dict[str, int]] = {}
-    for r in results:
-        trap = r.get("trap_type") or "none"
-        trap_stats.setdefault(trap, {"total": 0, "correct": 0})
-        trap_stats[trap]["total"] += 1
-        if r.get("correct"):
-            trap_stats[trap]["correct"] += 1
-
-    for trap, stats in trap_stats.items():
-        total = stats["total"]
-        acc = stats["correct"] / total if total > 0 else 0.0
-        print(f"  {trap:25s}: {acc:.1%} ({stats['correct']}/{total})")
-
+# ═══════════════════════════════════════════════════════════════════
+# IMAGE PATH RESOLUTION
+# ═══════════════════════════════════════════════════════════════════
 
 def _extract_image_name(value: Any) -> str | None:
     if isinstance(value, str) and value.strip():
@@ -569,11 +587,15 @@ def _resolve_image_path(meta_path: Path, image_name: str) -> Path | None:
 
 
 def _pick_single_image(metadata: dict[str, Any], meta_path: Path) -> Path | None:
+    """Select one image for single-image tasks. Prefer iso_fr angle."""
     images = metadata.get("images", [])
     if isinstance(images, list) and images:
         names = [n for n in (_extract_image_name(i) for i in images) if n]
         if names:
-            preferred = next((n for n in names if "iso_fr" in n), names[0])
+            # Prefer isometric front-right view — most informative angle
+            preferred = next((n for n in names if "iso_fr" in n), None)
+            if not preferred:
+                preferred = next((n for n in names if "front" in n), names[0])
             path = _resolve_image_path(meta_path, preferred)
             if path:
                 return path
@@ -589,11 +611,10 @@ def _pick_single_image(metadata: dict[str, Any], meta_path: Path) -> Path | None
 
 
 def _pick_pair_images(metadata: dict[str, Any], meta_path: Path) -> list[Path]:
+    """Select two images for pair comparison tasks."""
     paired_keys = [
-        ("image1", "image2"),
-        ("image_1", "image_2"),
-        ("img1", "img2"),
-        ("left_image", "right_image"),
+        ("image1", "image2"), ("image_1", "image_2"),
+        ("img1", "img2"), ("left_image", "right_image"),
     ]
     for k1, k2 in paired_keys:
         n1 = _extract_image_name(metadata.get(k1))
@@ -627,6 +648,83 @@ def _pick_pair_images(metadata: dict[str, Any], meta_path: Path) -> list[Path]:
     return []
 
 
+# ═══════════════════════════════════════════════════════════════════
+# REPORT GENERATION
+# ═══════════════════════════════════════════════════════════════════
+
+def print_report(results: list[dict[str, Any]]) -> None:
+    """Print accuracy report grouped by task, difficulty, and trap type."""
+    print("\n" + "=" * 70)
+    print("VLM BENCHMARK RESULTS")
+    print("=" * 70)
+
+    if not results:
+        print("\nNo valid results to report.")
+        return
+
+    # Overall stats
+    total = len(results)
+    correct = sum(1 for r in results if r.get("correct"))
+    print(f"\nOverall: {correct}/{total} = {correct/total:.1%}")
+
+    # By task
+    by_task: dict[str, list[dict]] = {}
+    for r in results:
+        by_task.setdefault(r["task"], []).append(r)
+
+    for task_id in TASKS:
+        task_results = by_task.get(task_id, [])
+        if not task_results:
+            continue
+
+        n = len(task_results)
+        c = sum(1 for r in task_results if r.get("correct"))
+        acc = c / n if n > 0 else 0.0
+        print(f"\n[{task_id}] {acc:.1%} ({c}/{n})")
+
+        # By difficulty
+        for level in ("easy", "medium", "hard"):
+            level_results = [r for r in task_results if r.get("difficulty_level") == level]
+            if level_results:
+                lc = sum(1 for r in level_results if r.get("correct"))
+                ln = len(level_results)
+                print(f"  {level:8s}: {lc/ln:.1%} ({lc}/{ln})")
+
+    # Trap type analysis
+    print("\n-- Trap Type Analysis --")
+    trap_stats: dict[str, dict[str, int]] = {}
+    for r in results:
+        trap = r.get("trap_type") or "none"
+        trap_stats.setdefault(trap, {"total": 0, "correct": 0})
+        trap_stats[trap]["total"] += 1
+        if r.get("correct"):
+            trap_stats[trap]["correct"] += 1
+
+    for trap, stats in sorted(trap_stats.items()):
+        n = stats["total"]
+        acc = stats["correct"] / n if n > 0 else 0.0
+        print(f"  {trap:25s}: {acc:.1%} ({stats['correct']}/{n})")
+
+    # Knot type breakdown
+    print("\n-- Per Knot Type --")
+    by_knot: dict[str, dict[str, int]] = {}
+    for r in results:
+        kt = r.get("knot_type") or "pair"
+        by_knot.setdefault(kt, {"total": 0, "correct": 0})
+        by_knot[kt]["total"] += 1
+        if r.get("correct"):
+            by_knot[kt]["correct"] += 1
+
+    for kt, stats in sorted(by_knot.items(), key=lambda x: x[0] or ""):
+        n = stats["total"]
+        acc = stats["correct"] / n if n > 0 else 0.0
+        print(f"  {kt:25s}: {acc:.1%} ({stats['correct']}/{n})")
+
+
+# ═══════════════════════════════════════════════════════════════════
+# MAIN
+# ═══════════════════════════════════════════════════════════════════
+
 def _task_list_from_arg(tasks_arg: str) -> list[str]:
     if tasks_arg.strip().lower() == "all":
         return list(TASKS.keys())
@@ -634,35 +732,47 @@ def _task_list_from_arg(tasks_arg: str) -> list[str]:
 
 
 def _find_metadata_files(data_dir: Path) -> list[Path]:
-    candidates = list(data_dir.glob("**/metadata*.json")) + list(data_dir.glob("**/*metadata*.json"))
+    candidates = (
+        list(data_dir.glob("**/metadata*.json")) +
+        list(data_dir.glob("**/*metadata*.json"))
+    )
     unique_paths: list[Path] = []
     seen: set[str] = set()
     for path in sorted(candidates):
         key = str(path.resolve())
-        if key in seen:
-            continue
-        seen.add(key)
-        unique_paths.append(path)
+        if key not in seen:
+            seen.add(key)
+            unique_paths.append(path)
     return unique_paths
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--data_dir", default="./exports", help="Directory containing images and metadata")
-    parser.add_argument("--tasks", default="T01_knotted_direct", help="Comma-separated task list or 'all'")
-    parser.add_argument("--model", default="gpt-5.2", help="VLM model name")
-    parser.add_argument("--output", default="results.json", help="Output JSON file path")
-    parser.add_argument("--limit", type=int, default=None, help="Maximum metadata samples to test")
-    parser.add_argument(
-        "--difficulty",
-        default=None,
-        choices=["easy", "medium", "hard"],
-        help="Only evaluate samples in a specific difficulty level",
-    )
+    parser = argparse.ArgumentParser(description="VLM Knot Topology Benchmark v2")
+    parser.add_argument("--data_dir", default="./dataset",
+                        help="Directory containing images and metadata")
+    parser.add_argument("--tasks", default="all",
+                        help="Comma-separated task IDs or 'all'")
+    parser.add_argument("--model", default="gpt-4o",
+                        help="VLM model name (default: gpt-4o)")
+    parser.add_argument("--output", default="results.json",
+                        help="Output JSON path")
+    parser.add_argument("--limit", type=int, default=None,
+                        help="Max metadata samples to evaluate")
+    parser.add_argument("--difficulty", default=None,
+                        choices=["easy", "medium", "hard"],
+                        help="Filter by difficulty level")
+    parser.add_argument("--phrasing", type=int, default=None,
+                        help="Use a specific phrasing index (0-19). "
+                             "If omitted, uses the original fixed prompt.")
+    parser.add_argument("--all-phrasings", action="store_true",
+                        help="Run all 20 phrasings per task (generates 200 unique questions)")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="Print plan without calling API")
     args = parser.parse_args()
 
+    # API key check (skip for dry-run)
     api_key = os.environ.get("OPENAI_API_KEY")
-    if not api_key:
+    if not api_key and not args.dry_run:
         print("[ERROR] OPENAI_API_KEY is not set.")
         sys.exit(1)
 
@@ -671,12 +781,12 @@ def main() -> None:
         print(f"[ERROR] data_dir does not exist: {data_dir}")
         sys.exit(1)
 
-    client = OpenAI(api_key=api_key)
+    client = OpenAI(api_key=api_key or "dry-run", timeout=60.0) if not args.dry_run else None
     task_ids = _task_list_from_arg(args.tasks)
     valid_task_ids = [t for t in task_ids if t in TASKS]
-    invalid_task_ids = [t for t in task_ids if t not in TASKS]
-    for task_id in invalid_task_ids:
-        print(f"[WARN] Unknown task id: {task_id}")
+    for t in task_ids:
+        if t not in TASKS:
+            print(f"[WARN] Unknown task: {t}")
     if not valid_task_ids:
         print("[ERROR] No valid tasks selected.")
         sys.exit(1)
@@ -684,10 +794,7 @@ def main() -> None:
     meta_files = _find_metadata_files(data_dir)
     print(f"Found {len(meta_files)} metadata files in {data_dir}")
     if not meta_files:
-        print(
-            "[WARN] No metadata files found. Expected names like "
-            "'metadata.json' or '*_metadata.json'."
-        )
+        print("[WARN] No metadata files found.")
 
     all_results: list[dict[str, Any]] = []
     scanned = 0
@@ -696,7 +803,7 @@ def main() -> None:
         try:
             with open(meta_path, "r", encoding="utf-8") as f:
                 metadata = json.load(f)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             print(f"[WARN] Failed to load {meta_path}: {exc}")
             continue
 
@@ -705,84 +812,107 @@ def main() -> None:
             continue
 
         scanned += 1
-        sample_name = str(metadata.get("id") or metadata.get("sample_id") or meta_path.parent.name)
+        sample_name = str(
+            metadata.get("id") or metadata.get("sample_id") or meta_path.stem
+        )
         single_image = _pick_single_image(metadata, meta_path)
         pair_images = _pick_pair_images(metadata, meta_path)
-        warned_single_missing = False
-        warned_pair_missing = False
 
         for task_id in valid_task_ids:
             if not sample_applicable(metadata, task_id):
                 continue
 
             task = TASKS[task_id]
-            input_type = "pair" if task.get("applicable") == "pair" else "single"
+            input_type = task["applicable"]
 
             image_paths: list[Path] = []
-            if input_type == "single":
+            if input_type in ("single", "multi"):
                 if not single_image:
-                    if not warned_single_missing:
-                        print(
-                            f"[WARN] Skip sample={sample_name}: no existing image file found "
-                            f"for metadata {meta_path.name}"
-                        )
-                        warned_single_missing = True
                     continue
                 image_paths = [single_image]
             elif input_type == "pair":
                 if len(pair_images) != 2:
-                    if not warned_pair_missing:
-                        print(
-                            f"[WARN] Skip sample={sample_name}: no valid image pair found "
-                            f"for metadata {meta_path.name}"
-                        )
-                        warned_pair_missing = True
                     continue
                 image_paths = pair_images
             else:
                 continue
 
-            try:
-                raw = ask_vlm(client, args.model, task["prompt"], [str(p) for p in image_paths])
-                parsed = parse_answer(raw, task_id)
-                gt = get_ground_truth(metadata, task_id)
-                correct = (parsed == gt) if gt is not None else None
+            gt = get_ground_truth(metadata, task_id)
 
-                result = {
-                    "task": task_id,
-                    "sample_id": sample_name,
-                    "metadata_path": str(meta_path),
-                    "input_type": input_type,
-                    "image_paths": [str(p) for p in image_paths],
-                    "knot_type": metadata.get("knotType"),
-                    "slackness": metadata.get("slackness", 0),
-                    "difficulty_score": diff_info["score"],
-                    "difficulty_level": diff_info["level"],
-                    "trap_type": metadata.get("trap_type"),
-                    "ground_truth": gt,
-                    "vlm_answer": parsed,
-                    "vlm_raw": raw,
-                    "correct": correct,
-                }
-                all_results.append(result)
+            # Determine which phrasing(s) to use
+            if args.all_phrasings:
+                phrasing_indices = list(range(num_phrasings(task_id)))
+            elif args.phrasing is not None:
+                phrasing_indices = [args.phrasing]
+            else:
+                phrasing_indices = [None]  # None = use original fixed prompt
 
-                status = "?" if correct is None else ("+" if correct else "-")
-                print(
-                    f"[{status}] {task_id} | sample={sample_name} | "
-                    f"gt={gt} | ans={parsed} | difficulty={diff_info['level']}"
-                )
-                time.sleep(0.5)
-            except Exception as exc:  # noqa: BLE001
-                print(f"[ERROR] {task_id} on {sample_name}: {exc}")
+            for pidx in phrasing_indices:
+                # Build the prompt
+                if pidx is not None:
+                    prompt = build_prompt(task_id, pidx)
+                    question_id = f"{task_id}_Q{pidx + 1:02d}"
+                else:
+                    prompt = task["prompt"]
+                    question_id = f"{task_id}_Q00"
+
+                if args.dry_run:
+                    print(f"  [DRY] {question_id} | sample={sample_name} | "
+                          f"gt={gt} | images={[p.name for p in image_paths]}")
+                    continue
+
+                try:
+                    raw = ask_vlm(client, args.model, prompt,
+                                 [str(p) for p in image_paths])
+                    parsed = parse_answer(raw, task_id)
+                    scoring = score_answer(parsed, gt, task_id)
+
+                    result = {
+                        "task": task_id,
+                        "question_id": question_id,
+                        "phrasing_index": pidx,
+                        "sample_id": sample_name,
+                        "metadata_path": str(meta_path),
+                        "input_type": input_type,
+                        "image_paths": [str(p) for p in image_paths],
+                        "knot_type": metadata.get("knotType"),
+                        "topological_id": metadata.get("topologicalId"),
+                        "crossing_number": metadata.get("crossingNumber"),
+                        "slackness": metadata.get("slackness", 0),
+                        "difficulty_score": diff_info["score"],
+                        "difficulty_level": diff_info["level"],
+                        "trap_type": metadata.get("trap_type"),
+                        "is_deceptive": metadata.get("isDeceptive", False),
+                        "ground_truth": gt,
+                        "vlm_answer": parsed,
+                        "vlm_raw": raw,
+                        "prompt_used": prompt,
+                        "correct": scoring["correct"],
+                        "partial": scoring.get("partial", False),
+                        "score_detail": scoring.get("detail", ""),
+                    }
+                    all_results.append(result)
+
+                    icon = "+" if scoring["correct"] else ("~" if scoring.get("partial") else "-")
+                    print(
+                        f"[{icon}] {question_id} | {sample_name} | "
+                        f"gt={gt} | ans={parsed} | {diff_info['level']}",
+                        flush=True,
+                    )
+                    time.sleep(0.5)
+                except Exception as exc:
+                    print(f"[ERROR] {question_id} on {sample_name}: {exc}", flush=True)
 
         if args.limit and scanned >= args.limit:
             break
 
-    with open(args.output, "w", encoding="utf-8") as f:
-        json.dump(all_results, f, indent=2, ensure_ascii=False)
-    print(f"\nSaved {len(all_results)} results to {args.output}")
-
-    print_report(all_results)
+    if not args.dry_run:
+        with open(args.output, "w", encoding="utf-8") as f:
+            json.dump(all_results, f, indent=2, ensure_ascii=False)
+        print(f"\nSaved {len(all_results)} results to {args.output}")
+        print_report(all_results)
+    else:
+        print(f"\n[DRY RUN] Would evaluate {scanned} samples × {len(valid_task_ids)} tasks")
 
 
 if __name__ == "__main__":

@@ -1,0 +1,140 @@
+[
+  {
+    "task": "T10_linked_or_not",
+    "sample_id": "borromean_v0",
+    "metadata_path": "/Users/yunfei/Desktop/pair_knot_dataset/dataset/links/borromean/borromean_v0_metadata.json",
+    "input_type": "multi",
+    "image_paths": [
+      "/Users/yunfei/Desktop/pair_knot_dataset/dataset/links/borromean/borromean_v0_iso_fr.png"
+    ],
+    "knot_type": "borromean",
+    "topological_id": "borromean_rings",
+    "crossing_number": 6,
+    "slackness": 0.1,
+    "difficulty_score": 0.255,
+    "difficulty_level": "easy",
+    "trap_type": null,
+    "is_deceptive": false,
+    "ground_truth": "LINKED",
+    "vlm_answer": "LINKED",
+    "vlm_raw": "LINKED",
+    "correct": true,
+    "partial": false,
+    "score_detail": "exact"
+  },
+  {
+    "task": "T11_hopflink_or_not",
+    "sample_id": "borromean_v0",
+    "metadata_path": "/Users/yunfei/Desktop/pair_knot_dataset/dataset/links/borromean/borromean_v0_metadata.json",
+    "input_type": "multi",
+    "image_paths": [
+      "/Users/yunfei/Desktop/pair_knot_dataset/dataset/links/borromean/borromean_v0_iso_fr.png"
+    ],
+    "knot_type": "borromean",
+    "topological_id": "borromean_rings",
+    "crossing_number": 6,
+    "slackness": 0.1,
+    "difficulty_score": 0.255,
+    "difficulty_level": "easy",
+    "trap_type": null,
+    "is_deceptive": false,
+    "ground_truth": "NOT_HOPF",
+    "vlm_answer": "NOT_HOPF",
+    "vlm_raw": "NOT_HOPF",
+    "correct": true,
+    "partial": false,
+    "score_detail": "exact"
+  },
+  {
+    "task": "T12_link_components",
+    "sample_id": "borromean_v0",
+    "metadata_path": "/Users/yunfei/Desktop/pair_knot_dataset/dataset/links/borromean/borromean_v0_metadata.json",
+    "input_type": "multi",
+    "image_paths": [
+      "/Users/yunfei/Desktop/pair_knot_dataset/dataset/links/borromean/borromean_v0_iso_fr.png"
+    ],
+    "knot_type": "borromean",
+    "topological_id": "borromean_rings",
+    "crossing_number": 6,
+    "slackness": 0.1,
+    "difficulty_score": 0.255,
+    "difficulty_level": "easy",
+    "trap_type": null,
+    "is_deceptive": false,
+    "ground_truth": "3",
+    "vlm_answer": "3",
+    "vlm_raw": "3",
+    "correct": true,
+    "partial": false,
+    "score_detail": "pred=3,gt=3"
+  },
+  {
+    "task": "T10_linked_or_not",
+    "sample_id": "borromean_v1",
+    "metadata_path": "/Users/yunfei/Desktop/pair_knot_dataset/dataset/links/borromean/borromean_v1_metadata.json",
+    "input_type": "multi",
+    "image_paths": [
+      "/Users/yunfei/Desktop/pair_knot_dataset/dataset/links/borromean/borromean_v1_iso_fr.png"
+    ],
+    "knot_type": "borromean",
+    "topological_id": "borromean_rings",
+    "crossing_number": 6,
+    "slackness": 0.35,
+    "difficulty_score": 0.367,
+    "difficulty_level": "medium",
+    "trap_type": null,
+    "is_deceptive": false,
+    "ground_truth": "LINKED",
+    "vlm_answer": "LINKED",
+    "vlm_raw": "LINKED",
+    "correct": true,
+    "partial": false,
+    "score_detail": "exact"
+  },
+  {
+    "task": "T11_hopflink_or_not",
+    "sample_id": "borromean_v1",
+    "metadata_path": "/Users/yunfei/Desktop/pair_knot_dataset/dataset/links/borromean/borromean_v1_metadata.json",
+    "input_type": "multi",
+    "image_paths": [
+      "/Users/yunfei/Desktop/pair_knot_dataset/dataset/links/borromean/borromean_v1_iso_fr.png"
+    ],
+    "knot_type": "borromean",
+    "topological_id": "borromean_rings",
+    "crossing_number": 6,
+    "slackness": 0.35,
+    "difficulty_score": 0.367,
+    "difficulty_level": "medium",
+    "trap_type": null,
+    "is_deceptive": false,
+    "ground_truth": "NOT_HOPF",
+    "vlm_answer": "HOPF",
+    "vlm_raw": "HOPF",
+    "correct": false,
+    "partial": false,
+    "score_detail": "pred=HOPF,gt=NOT_HOPF"
+  },
+  {
+    "task": "T12_link_components",
+    "sample_id": "borromean_v1",
+    "metadata_path": "/Users/yunfei/Desktop/pair_knot_dataset/dataset/links/borromean/borromean_v1_metadata.json",
+    "input_type": "multi",
+    "image_paths": [
+      "/Users/yunfei/Desktop/pair_knot_dataset/dataset/links/borromean/borromean_v1_iso_fr.png"
+    ],
+    "knot_type": "borromean",
+    "topological_id": "borromean_rings",
+    "crossing_number": 6,
+    "slackness": 0.35,
+    "difficulty_score": 0.367,
+    "difficulty_level": "medium",
+    "trap_type": null,
+    "is_deceptive": false,
+    "ground_truth": "3",
+    "vlm_answer": "3",
+    "vlm_raw": "3",
+    "correct": true,
+    "partial": false,
+    "score_detail": "pred=3,gt=3"
+  }
+]

@@ -1,0 +1,50 @@
+{
+  "version": "3.0",
+  "id": "spiral_disk_s0.10_d0.39_v1",
+  "knotType": "spiral_disk",
+  "topologicalId": "unknot",
+  "isKnot": false,
+  "isUnknot": true,
+  "isDeceptive": true,
+  "isLink": false,
+  "numComponents": 1,
+  "crossingNumber": 0,
+  "family": "UNKNOT",
+  "seed": 956374,
+  "slackness": 0.1,
+  "deformStrength": 0.3922517672763206,
+  "bucket_topology": "low",
+  "bucket_saliency": "tight",
+  "trap_type": "deceptive_unknot",
+  "difficulty_score": 0.105,
+  "difficulty": "easy",
+  "images": [
+    {
+      "filename": "spiral_disk_s0.10_d0.39_v1_iso_fr.png",
+      "cameraAngle": "iso_fr",
+      "cameraPos": [
+        3.5,
+        3.5,
+        5
+      ]
+    },
+    {
+      "filename": "spiral_disk_s0.10_d0.39_v1_front.png",
+      "cameraAngle": "front",
+      "cameraPos": [
+        0,
+        1.5,
+        6
+      ]
+    },
+    {
+      "filename": "spiral_disk_s0.10_d0.39_v1_oblique.png",
+      "cameraAngle": "oblique",
+      "cameraPos": [
+        2,
+        6,
+        3
+      ]
+    }
+  ]
+}

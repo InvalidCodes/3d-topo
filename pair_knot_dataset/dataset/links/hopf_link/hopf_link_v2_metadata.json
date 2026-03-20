@@ -1,0 +1,50 @@
+{
+  "version": "3.0",
+  "id": "hopf_link_v2",
+  "knotType": "hopf_link",
+  "topologicalId": "hopf_link",
+  "isKnot": false,
+  "isUnknot": false,
+  "isDeceptive": false,
+  "isLink": true,
+  "numComponents": 2,
+  "crossingNumber": 2,
+  "family": "link",
+  "seed": 881809,
+  "slackness": 0.24000000000000002,
+  "deformStrength": 0.21492136740125717,
+  "bucket_topology": "low",
+  "bucket_saliency": "tight",
+  "trap_type": null,
+  "difficulty_score": 0,
+  "difficulty": "easy",
+  "images": [
+    {
+      "filename": "hopf_link_v2_iso_fr.png",
+      "cameraAngle": "iso_fr",
+      "cameraPos": [
+        3.5,
+        3.5,
+        5
+      ]
+    },
+    {
+      "filename": "hopf_link_v2_front.png",
+      "cameraAngle": "front",
+      "cameraPos": [
+        0,
+        1.5,
+        6
+      ]
+    },
+    {
+      "filename": "hopf_link_v2_oblique.png",
+      "cameraAngle": "oblique",
+      "cameraPos": [
+        2,
+        6,
+        3
+      ]
+    }
+  ]
+}

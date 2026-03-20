@@ -1,0 +1,50 @@
+{
+  "version": "3.0",
+  "id": "trefoil_s0.25_d0.16_v3",
+  "knotType": "trefoil",
+  "topologicalId": "trefoil_3_1",
+  "isKnot": true,
+  "isUnknot": false,
+  "isDeceptive": false,
+  "isLink": false,
+  "numComponents": 1,
+  "crossingNumber": 3,
+  "family": "TORUS",
+  "seed": 402181,
+  "slackness": 0.25,
+  "deformStrength": 0.15701669154223055,
+  "bucket_topology": "low",
+  "bucket_saliency": "tight",
+  "trap_type": null,
+  "difficulty_score": 0.218,
+  "difficulty": "easy",
+  "images": [
+    {
+      "filename": "trefoil_s0.25_d0.16_v3_iso_fr.png",
+      "cameraAngle": "iso_fr",
+      "cameraPos": [
+        3.5,
+        3.5,
+        5
+      ]
+    },
+    {
+      "filename": "trefoil_s0.25_d0.16_v3_front.png",
+      "cameraAngle": "front",
+      "cameraPos": [
+        0,
+        1.5,
+        6
+      ]
+    },
+    {
+      "filename": "trefoil_s0.25_d0.16_v3_oblique.png",
+      "cameraAngle": "oblique",
+      "cameraPos": [
+        2,
+        6,
+        3
+      ]
+    }
+  ]
+}

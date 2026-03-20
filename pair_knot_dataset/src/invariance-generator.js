@@ -799,6 +799,188 @@ export function generateDatasetMetadata(dataset) {
   };
 }
 
+// ============= 单图数据集生成（Single-Image Tasks T01-T09） =============
+
+/**
+ * 数据集规格 — 每种 knot 类型生成多少样本、多少视角
+ */
+const SINGLE_IMAGE_SPEC = {
+  // 每个 knot 类型 × 参数变体数 × 相机角度数 = 总图数
+  anglesPerSample: 3,       // 每个参数变体渲染3个视角（比8角精简）
+  preferredAngles: [        // 优选视角子集
+    { name: 'iso_fr',  pos: [5, 5, 7] },
+    { name: 'front',   pos: [0, 2, 8] },
+    { name: 'oblique', pos: [3, 8, 4] },
+  ],
+};
+
+/**
+ * 为单个 knot 类型生成一批 ImageParams
+ * @param {Function} rng
+ * @param {string} knotType
+ * @param {number} numVariants - 参数变体数
+ * @returns {Object[]} - 包含 metadata 的样本数组
+ */
+function generateSingleSamplesForType(rng, knotType, numVariants) {
+  const entry = KNOT_TYPE_REGISTRY[knotType];
+  if (!entry) return [];
+
+  const samples = [];
+
+  for (let v = 0; v < numVariants; v++) {
+    // 均匀覆盖 slackness 空间
+    const slacknessTarget = v / Math.max(numVariants - 1, 1);  // 0→1 均匀
+    const params = generateRandomImageParams(rng, knotType, {
+      slacknessRange: [
+        Math.max(0, slacknessTarget - 0.15),
+        Math.min(0.80, slacknessTarget + 0.15),
+      ],
+    });
+
+    // 为每个变体选择多个视角
+    const angles = SINGLE_IMAGE_SPEC.preferredAngles;
+    const images = angles.map(angle => ({
+      filename: '', // 渲染时填充
+      cameraAngle: angle.name,
+      cameraPos: angle.pos,
+    }));
+
+    const sample = {
+      version: '2.0',
+      knotType,
+      topologicalId: entry.topologicalId,
+      isKnot: entry.isKnot ?? false,
+      isUnknot: entry.isUnknot ?? false,
+      isDeceptive: entry.isDeceptive ?? false,
+      isLink: entry.isLink ?? false,
+      numComponents: entry.numComponents ?? 1,
+      crossingNumber: entry.crossingNumber,
+      family: entry.family,
+
+      // 生成参数
+      seed: params.seed,
+      slackness: params.slackness,
+      deformStrength: params.deformStrength,
+
+      // Difficulty
+      bucket_topology: params.bucket_topology,
+      bucket_saliency: params.bucket_saliency,
+      trap_type: params.trap_type,
+      difficulty: '', // 渲染后计算
+
+      // 渲染参数
+      color: params.color,
+      metalness: params.metalness,
+      roughness: params.roughness,
+      tubeRadius: params.tubeRadius,
+      backgroundColor: params.backgroundColor,
+      lightIntensity: params.lightIntensity,
+      ambientIntensity: params.ambientIntensity,
+      gaussCode: params.gaussCode,
+
+      // 图片列表
+      images,
+
+      // Ground truth（与 vlm_benchmark.py 对齐）
+      groundTruth: {
+        T01_knotted: entry.isKnot ? 'KNOTTED' : 'UNKNOTTED',
+        T04_can_untie: entry.isKnot ? 'NO' : 'YES',
+        T06_family: _FAMILY_MAP_JS[knotType] || 'OTHER',
+        T08_trefoil: knotType === 'trefoil' ? 'TREFOIL' : 'NOT_TREFOIL',
+        T09_trap: (entry.isDeceptive && !entry.isKnot) ? 'LOOSE_ILLUSION' : 'ACTUAL_KNOT',
+      },
+    };
+
+    samples.push(sample);
+  }
+
+  return samples;
+}
+
+// Family map (JS side, matches Python _FAMILY_MAP)
+const _FAMILY_MAP_JS = {
+  unknot: 'UNKNOT', twisted_ring: 'UNKNOT', kinky_unknot: 'UNKNOT',
+  spiral_disk: 'UNKNOT',
+  loose_open_knot: 'TORUS',
+  trefoil: 'TORUS', torus_2_5: 'TORUS', torus_2_7: 'TORUS',
+  torus_2_9: 'TORUS', torus_3_4: 'TORUS', torus_3_5: 'TORUS',
+  figure8: 'TWIST',
+};
+
+/**
+ * 生成完整的单图数据集（用于 T01-T09 + T10-T12）
+ *
+ * @param {Object} config
+ * @param {number} config.samplesPerType - 每种 knot 类型的参数变体数
+ * @param {string} config.seed
+ * @param {boolean} config.includeLinks - 是否包含链环类型
+ * @returns {Object} { samples: Object[], statistics: Object }
+ */
+export function generateSingleImageDataset(config = {}) {
+  const {
+    samplesPerType = 5,
+    seed = 'single-v1',
+    includeLinks = true,
+  } = config;
+
+  const rng = makeRng(seed);
+  const allSamples = [];
+  const stats = {
+    byType: {},
+    byDifficulty: { easy: 0, medium: 0, hard: 0 },
+    byFamily: {},
+    totalImages: 0,
+  };
+
+  // 按照 knot 类型生成
+  const typeList = Object.entries(KNOT_TYPE_REGISTRY)
+    .filter(([_, entry]) => includeLinks || !entry.isLink)
+    .map(([key]) => key);
+
+  for (const knotType of typeList) {
+    const samples = generateSingleSamplesForType(rng, knotType, samplesPerType);
+
+    for (const sample of samples) {
+      // 分配 ID
+      const idx = allSamples.length;
+      sample.id = `single_${String(idx).padStart(4, '0')}`;
+
+      // 计算 difficulty
+      const crossing = sample.crossingNumber || 0;
+      const slackness = sample.slackness || 0;
+      const trap = sample.trap_type;
+      const score = 0.35 * Math.min(crossing / 10, 1) +
+                    0.45 * slackness +
+                    0.20 * (trap ? 0.3 : 0);
+      sample.difficulty = score < 0.30 ? 'easy' : score < 0.60 ? 'medium' : 'hard';
+      sample.difficulty_score = Math.round(score * 1000) / 1000;
+
+      allSamples.push(sample);
+
+      // Stats
+      stats.byType[knotType] = (stats.byType[knotType] || 0) + 1;
+      stats.byDifficulty[sample.difficulty]++;
+      const family = _FAMILY_MAP_JS[knotType] || 'OTHER';
+      stats.byFamily[family] = (stats.byFamily[family] || 0) + 1;
+      stats.totalImages += sample.images.length;
+    }
+  }
+
+  // Shuffle
+  const shuffled = shuffleArray(rng, allSamples);
+
+  console.log(`=== Single Image Dataset ===`);
+  console.log(`Types: ${typeList.length}, Samples: ${shuffled.length}, Images: ${stats.totalImages}`);
+  console.log(`Difficulty: easy=${stats.byDifficulty.easy}, medium=${stats.byDifficulty.medium}, hard=${stats.byDifficulty.hard}`);
+  console.log(`Family:`, stats.byFamily);
+
+  return {
+    samples: shuffled,
+    statistics: stats,
+    config: { samplesPerType, seed, includeLinks, generatedAt: new Date().toISOString() },
+  };
+}
+
 // ============= 导出 =============
 
 export default {
@@ -808,6 +990,7 @@ export default {
   generatePositivePair,
   generateNegativePair,
   generateInvarianceDataset,
+  generateSingleImageDataset,
   pairsToJsonl,
   generateDatasetMetadata,
 };

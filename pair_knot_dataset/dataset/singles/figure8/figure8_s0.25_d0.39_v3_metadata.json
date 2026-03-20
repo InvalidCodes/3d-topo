@@ -1,0 +1,50 @@
+{
+  "version": "3.0",
+  "id": "figure8_s0.25_d0.39_v3",
+  "knotType": "figure8",
+  "topologicalId": "figure8_4_1",
+  "isKnot": true,
+  "isUnknot": false,
+  "isDeceptive": false,
+  "isLink": false,
+  "numComponents": 1,
+  "crossingNumber": 4,
+  "family": "TWIST",
+  "seed": 520928,
+  "slackness": 0.25,
+  "deformStrength": 0.38861544192768627,
+  "bucket_topology": "mid",
+  "bucket_saliency": "tight",
+  "trap_type": null,
+  "difficulty_score": 0.253,
+  "difficulty": "easy",
+  "images": [
+    {
+      "filename": "figure8_s0.25_d0.39_v3_iso_fr.png",
+      "cameraAngle": "iso_fr",
+      "cameraPos": [
+        3.5,
+        3.5,
+        5
+      ]
+    },
+    {
+      "filename": "figure8_s0.25_d0.39_v3_front.png",
+      "cameraAngle": "front",
+      "cameraPos": [
+        0,
+        1.5,
+        6
+      ]
+    },
+    {
+      "filename": "figure8_s0.25_d0.39_v3_oblique.png",
+      "cameraAngle": "oblique",
+      "cameraPos": [
+        2,
+        6,
+        3
+      ]
+    }
+  ]
+}

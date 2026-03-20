@@ -9,6 +9,7 @@ import * as THREE from 'three';
 import * as CurveExtras from 'three/addons/curves/CurveExtras.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { processCenterline } from './centerline-pipeline.js';
+import { getCrossingNumber } from './knot-type-registry.js';
 
 const Curves = CurveExtras.Curves || CurveExtras;
 
@@ -636,49 +637,106 @@ function buildChainGeometry({ rng, quality = 'mid', radius = 0.24, numLinks = 4 
 }
 
 function buildBorromeanRingsGeometry({ rng, quality = 'mid', radius = 0.24 } = {}) {
+  // =====================================================================
+  // Borromean Rings — 经典三角排列 + 精确交叉点 Gaussian bump
+  //
+  // 构造方法：
+  //   1. 三个圆心排成等边三角形（经典 Venn diagram 排列）
+  //   2. 所有圆在同一 XY 平面，半径 R，圆心间距 = sep
+  //   3. 精确计算每对圆的两个交叉点角度
+  //   4. 在交叉点处沿 Z 方向加 Gaussian bump（over/under）
+  //   5. 循环符号：A over B, B over C, C over A → Borromean 拓扑
+  //
+  // 这保证：任意两环的交叉交替 over/under（不互锁），
+  //         但三环整体互锁（Borromean link）
+  // =====================================================================
   const { tubularSegments, radialSegments } = tubeQualityParams(quality);
-  const R = 1.5;
-  const ratio = 1.6;
-  const tubeRadius = radius * 0.85;
-  const a = R * ratio, b = R;
+  const R = 1.0;          // 圆半径
+  const sep = 0.7;        // 圆心到三角形中心的距离（< R 才能相交）
+  const bumpH = 0.30;     // over/under bump 高度（>> tube radius 防穿模）
+  const bumpW = 0.35;     // bump 宽度（弧度）
+  const tubeR = 0.055;    // 管壁半径
 
   const ringColors = [
-    new THREE.Color(0.95, 0.25, 0.25),
-    new THREE.Color(0.95, 0.85, 0.15),
-    new THREE.Color(0.25, 0.45, 0.95),
+    new THREE.Color(0.95, 0.25, 0.25),  // 红
+    new THREE.Color(0.95, 0.85, 0.15),  // 黄
+    new THREE.Color(0.25, 0.45, 0.95),  // 蓝
   ];
 
-  class EllipseCurve3D extends THREE.Curve {
-    constructor({ a, b, center, xAxis, yAxis }) {
+  // 三角形顶点（圆心位置）
+  const centers = [
+    [0, -sep, 0],                                     // A — 底部
+    [sep * Math.sqrt(3) / 2, sep / 2, 0],             // B — 右上
+    [-sep * Math.sqrt(3) / 2, sep / 2, 0],            // C — 左上
+  ];
+
+  // 对每个圆，计算它与另外两个圆的交叉点角度和 over/under 符号
+  function computeCrossings(myIdx) {
+    const crossings = [];
+    const [cx, cy] = [centers[myIdx][0], centers[myIdx][1]];
+
+    for (let other = 0; other < 3; other++) {
+      if (other === myIdx) continue;
+      const [ox, oy] = [centers[other][0], centers[other][1]];
+      const dx = ox - cx, dy = oy - cy;
+      const d = Math.sqrt(dx * dx + dy * dy);
+      if (d > 2 * R || d < 1e-6) continue;
+
+      // 从本圆圆心指向对方圆心的角度
+      const baseAngle = Math.atan2(dy, dx);
+      // 交叉弦的半角
+      const halfAngle = Math.acos(d / (2 * R));
+      // 两个交叉点的角度
+      const a1 = baseAngle + halfAngle;
+      const a2 = baseAngle - halfAngle;
+
+      // 循环 over/under 符号：
+      //   A(0) over B(1)  →  (0,1): +1 at first crossing, -1 at second
+      //   B(1) over C(2)  →  (1,2): +1 at first, -1 at second
+      //   C(2) over A(0)  →  (2,0): +1 at first, -1 at second
+      const overFirst = ((myIdx + 1) % 3 === other) ? 1 : -1;
+      crossings.push({ angle: a1, sign: overFirst });
+      crossings.push({ angle: a2, sign: -overFirst });
+    }
+    return crossings;
+  }
+
+  class BorromeanCircleCurve extends THREE.Curve {
+    constructor(ringIndex) {
       super();
-      this.a = a; this.b = b;
-      this.center = center;
-      this.xAxis = xAxis.clone().normalize();
-      this.yAxis = yAxis.clone().normalize();
+      this.cx = centers[ringIndex][0];
+      this.cy = centers[ringIndex][1];
+      this.crossings = computeCrossings(ringIndex);
     }
     getPoint(t, optionalTarget = new THREE.Vector3()) {
       const angle = t * Math.PI * 2;
-      return optionalTarget.set(0, 0, 0)
-        .addScaledVector(this.center, 1)
-        .addScaledVector(this.xAxis, this.a * Math.cos(angle))
-        .addScaledVector(this.yAxis, this.b * Math.sin(angle));
+      const v = optionalTarget || new THREE.Vector3();
+
+      // 基础圆在 XY 平面
+      const x = this.cx + R * Math.cos(angle);
+      const y = this.cy + R * Math.sin(angle);
+
+      // 在每个交叉点附近加 Gaussian bump（Z 方向）
+      let z = 0;
+      for (const cr of this.crossings) {
+        let da = angle - cr.angle;
+        // 归一化到 [-π, π]
+        da = da - Math.round(da / (2 * Math.PI)) * 2 * Math.PI;
+        z += cr.sign * bumpH * Math.exp(-(da * da) / (2 * bumpW * bumpW));
+      }
+      return v.set(x, y, z);
     }
   }
 
-  const configs = [
-    { center: new THREE.Vector3(0, 0, 0), xAxis: new THREE.Vector3(1, 0, 0), yAxis: new THREE.Vector3(0, 1, 0) },
-    { center: new THREE.Vector3(0, 0, 0), xAxis: new THREE.Vector3(0, 1, 0), yAxis: new THREE.Vector3(0, 0, 1) },
-    { center: new THREE.Vector3(0, 0, 0), xAxis: new THREE.Vector3(1, 0, 0), yAxis: new THREE.Vector3(0, 0, 1) },
-  ];
-
   const geoms = [];
   for (let i = 0; i < 3; i++) {
-    const curve = new EllipseCurve3D({ a, b, ...configs[i] });
-    const g = new THREE.TubeGeometry(curve, tubularSegments, tubeRadius, radialSegments, true);
+    const curve = new BorromeanCircleCurve(i);
+    const segments = Math.max(tubularSegments, 256);
+    const g = new THREE.TubeGeometry(curve, segments, tubeR, radialSegments, true);
     const colors = new Float32Array(g.attributes.position.count * 3);
     const c = ringColors[i];
     for (let j = 0; j < g.attributes.position.count; j++) {
-      colors[j*3] = c.r; colors[j*3+1] = c.g; colors[j*3+2] = c.b;
+      colors[j * 3] = c.r; colors[j * 3 + 1] = c.g; colors[j * 3 + 2] = c.b;
     }
     g.setAttribute('color', new THREE.BufferAttribute(colors, 3));
     geoms.push(g);
@@ -738,8 +796,26 @@ export function buildGeometryForKnotType(knotType, options = {}) {
   } = options;
   
   const localRng = rng || makeRng(String(Date.now()));
-  const tubeRadius = radius * 0.85;
+
+  // 目标：归一化后管壁半径 = targetOuterRadius × TUBE_RATIO
+  // 自适应：低 crossing 用粗绳使 crossing 明显，高 crossing 稍细避免自遮挡
+  const crossingNum = getCrossingNumber(knotType) || 0;
+  const TUBE_RATIO = crossingNum <= 4 ? 0.07 : (crossingNum <= 7 ? 0.055 : 0.045);
+
   const buildProcessedTube = (rawCurve, { closed = true, targetOuterRadius = 1.35, sampleN = 300 } = {}) => {
+    // 1. 先采样曲线，估算原始尺寸，计算自适应 tubeRadius
+    const samplePts = rawCurve.getPoints ? rawCurve.getPoints(100) : [];
+    let curveRadius = 1.0;
+    if (samplePts.length > 2) {
+      const box = new THREE.Box3();
+      samplePts.forEach(p => box.expandByPoint(p));
+      const size = new THREE.Vector3();
+      box.getSize(size);
+      curveRadius = Math.max(size.x, size.y, size.z) * 0.5 || 1.0;
+    }
+    // tubeRadius 与曲线尺寸成正比，归一化后 = targetOuterRadius × TUBE_RATIO
+    const tubeRadius = curveRadius * TUBE_RATIO;
+
     const processedCurve = processCenterline(rawCurve, {
       rng: localRng,
       deformStrength,
@@ -765,7 +841,40 @@ export function buildGeometryForKnotType(knotType, options = {}) {
   
   switch (knotType) {
     case 'unknot':
-      geometry = buildProcessedTube(new CircleCurve({ radius: 1.0 }), { closed: true, targetOuterRadius: 1.35, sampleN: 300 });
+      // ====================================================
+      // Unknot：拓扑上可解开，但视觉上应有 apparent crossings
+      //
+      // 策略：用 KinkyUnknotCurve（低配版）
+      //   - 产生局部扭结（视觉上看起来有 crossings）
+      //   - 但拓扑上始终是 unknot（所有 kink 可连续变形解开）
+      //   - 不同 kink 数量控制视觉复杂度
+      //
+      // 30%: 低复杂度（2 个 kink，简单但仍有交叉）
+      // 40%: 中复杂度（3-4 个 kink，看起来可能打了结）
+      // 30%: 高复杂度（5-6 个 kink，很容易误判为 knotted）
+      // ====================================================
+      {
+        const v = localRng();
+        const seed = Math.floor(localRng() * 100000);
+        let kinkCount, kinkAmp;
+        if (v < 0.3) {
+          kinkCount = 2;
+          kinkAmp = 0.15 + localRng() * 0.10;  // 0.15-0.25
+        } else if (v < 0.7) {
+          kinkCount = 3 + Math.floor(localRng() * 2); // 3-4
+          kinkAmp = 0.20 + localRng() * 0.10;  // 0.20-0.30
+        } else {
+          kinkCount = 5 + Math.floor(localRng() * 2); // 5-6
+          kinkAmp = 0.25 + localRng() * 0.10;  // 0.25-0.35
+        }
+        const unknotCurve = new KinkyUnknotCurve({
+          k: kinkCount,
+          baseRadius: 1.0,
+          kinkAmplitude: kinkAmp,
+          seed,
+        });
+        geometry = buildProcessedTube(unknotCurve, { closed: true, targetOuterRadius: 1.35, sampleN: 400 });
+      }
       break;
       
     case 'twisted_ring':
@@ -781,12 +890,12 @@ export function buildGeometryForKnotType(knotType, options = {}) {
       break;
       
     case 'spiral_disk':
-      // 对齐 Gallery：Spiral Loop 不能再做归一化/变形，否则会破坏“物理间隙”设计意图。
-      // 这里直接用 TubeGeometry（等比缩放不会发生），并让 SpiralLoopCurve 自己根据 tubeRadius 约束 pitch/gap。
+      // Spiral Loop 用固定 tubeRadius（不走 buildProcessedTube 的自适应流程）
       {
         const { tubularSegments, radialSegments } = tubeQualityParams(quality);
+        const spiralTubeRadius = 0.06; // 固定管壁粗细
         const curve = new SpiralLoopCurve({
-          tubeRadius,
+          tubeRadius: spiralTubeRadius,
           turns: 2.0 + localRng() * 1.2,          // 2.0 - 3.2 圈
           pitch: 0.12 + localRng() * 0.10,        // 会被 clamp 到 >= 2.8*tubeRadius
           innerRadius: 0.55,
@@ -795,7 +904,7 @@ export function buildGeometryForKnotType(knotType, options = {}) {
         geometry = new THREE.TubeGeometry(
           curve,
           Math.max(280, tubularSegments),
-          tubeRadius,
+          spiralTubeRadius,
           radialSegments,
           true
         );
@@ -804,56 +913,149 @@ export function buildGeometryForKnotType(knotType, options = {}) {
       break;
       
     case 'kinky_unknot':
-      geometry = buildKinkyUnknotGeometry({ rng: localRng, quality, radius: tubeRadius });
+      geometry = buildKinkyUnknotGeometry({ rng: localRng, quality, radius: 0.06 });
       break;
       
     case 'trefoil':
-      geometry = buildProcessedTube(new TorusKnotCurve({ p: 2, q: 3, R: 1.0, r: 0.4 }), { closed: true, targetOuterRadius: 1.35, sampleN: 300 });
+      geometry = buildProcessedTube(new TorusKnotCurve({ p: 2, q: 3, R: 1.0, r: 0.55 }), { closed: true, targetOuterRadius: 1.35, sampleN: 300 });
+      break;
+
+    case 'loose_open_knot':
+      // ====================================================
+      // 松散开口结：取 trefoil 的 ~82% 弧段，两端加开放尾巴
+      // 关键：**不走 processCenterline**！slackness 会抹平交叉
+      // ====================================================
+      {
+        const { tubularSegments: ts, radialSegments: rs } = tubeQualityParams(quality);
+        const baseCurve = new TorusKnotCurve({ p: 2, q: 3, R: 1.0, r: 0.50 });
+        const sampleN = 420;
+        let ringPts = baseCurve.getPoints(sampleN);
+        ringPts = ringPts.filter(p => Number.isFinite(p?.x) && Number.isFinite(p?.y) && Number.isFinite(p?.z));
+
+        // 从随机位置截取 ~82% 弧段，形成开口
+        const start = Math.floor(localRng() * ringPts.length * 0.35);
+        const span = Math.max(80, Math.floor(ringPts.length * 0.82));
+        let corePts = [];
+        for (let i = 0; i <= span; i++) {
+          corePts.push(ringPts[(start + i) % ringPts.length].clone());
+        }
+
+        // 略微压扁 Z + 添加变形
+        const s = clamp(slackness, 0, 1);
+        const d = clamp(deformStrength, 0, 1);
+        const zScale = clamp(1.0 - 0.72 * s, 0.18, 1.0);
+        const deformAmp = d * (0.05 + 0.09 * (1 - 0.5 * s));
+        const tau = Math.PI * 2;
+        const ph1 = localRng() * tau, ph2 = localRng() * tau, ph3 = localRng() * tau;
+        for (let i = 0; i < corePts.length; i++) {
+          const t = i / Math.max(1, corePts.length - 1);
+          const w = Math.exp(-((t - 0.5) ** 2) / 0.07);
+          corePts[i].multiplyScalar(1 + (0.03 + 0.18 * s) * w);
+          corePts[i].z *= zScale;
+          if (deformAmp > 1e-6) {
+            corePts[i].x += deformAmp * (0.65 * Math.sin(tau * (1.6 + 0.8 * s) * t + ph1) + 0.35 * Math.cos(tau * 3.1 * t + ph2));
+            corePts[i].y += deformAmp * (0.60 * Math.cos(tau * (1.2 + 0.6 * d) * t + ph2) + 0.40 * Math.sin(tau * 2.7 * t + ph1));
+            corePts[i].z += deformAmp * 0.7 * 0.75 * Math.sin(tau * (1.0 + 0.7 * s) * t + ph3);
+          }
+        }
+
+        // 两端加开放尾巴
+        const headDir = corePts[0].clone().sub(corePts[1]).normalize();
+        const tailDir = corePts[corePts.length - 1].clone().sub(corePts[corePts.length - 2]).normalize();
+        const tailLenA = 0.70 + 0.55 * s + localRng() * 0.35;
+        const tailLenB = 0.75 + 0.60 * s + localRng() * 0.35;
+        const liftZ = 1.0 - 0.6 * s;
+        const liftA = new THREE.Vector3(-0.10, 0.18, 0.08 * liftZ);
+        const liftB = new THREE.Vector3(0.12, -0.15, -0.10 * liftZ);
+
+        const h0 = corePts[0].clone();
+        const h1 = h0.clone().addScaledVector(headDir, tailLenA * 0.7).addScaledVector(liftA, 0.6);
+        const h2 = h0.clone().addScaledVector(headDir, tailLenA * 1.5).add(liftA);
+        const t0 = corePts[corePts.length - 1].clone();
+        const t1 = t0.clone().addScaledVector(tailDir, tailLenB * 0.7).addScaledVector(liftB, 0.6);
+        const t2 = t0.clone().addScaledVector(tailDir, tailLenB * 1.5).add(liftB);
+        corePts = [h2, h1, ...corePts, t1, t2];
+
+        // 平滑曲线
+        let openCurve = new THREE.CatmullRomCurve3(corePts, false, 'centripetal');
+        let smoothPts = openCurve.getPoints(Math.max(260, ts));
+        smoothPts = smoothPts.filter(p => Number.isFinite(p?.x) && Number.isFinite(p?.y) && Number.isFinite(p?.z));
+        if (smoothPts.length >= 20) {
+          const iters = Math.round(4 + 8 * s + 4 * d);
+          const beta = 0.12 + 0.10 * s;
+          for (let it = 0; it < iters; it++) {
+            const next = smoothPts.map(p => p.clone());
+            for (let i = 1; i < smoothPts.length - 1; i++) {
+              const avg = smoothPts[i - 1].clone().add(smoothPts[i]).add(smoothPts[i + 1]).divideScalar(3);
+              next[i].lerp(avg, beta);
+            }
+            smoothPts = next;
+          }
+          openCurve = new THREE.CatmullRomCurve3(smoothPts, false, 'centripetal');
+        }
+
+        // 估算曲线尺寸，计算管壁半径
+        const estPts = openCurve.getPoints(100);
+        const estBox = new THREE.Box3();
+        estPts.forEach(p => estBox.expandByPoint(p));
+        const estSize = new THREE.Vector3(); estBox.getSize(estSize);
+        const curveR = Math.max(estSize.x, estSize.y, estSize.z) * 0.5 || 1.0;
+        const looseTubeR = curveR * TUBE_RATIO;
+
+        geometry = new THREE.TubeGeometry(openCurve, Math.max(ts, 300), looseTubeR, rs, false);
+        geometry.center();
+        geometry.computeBoundingSphere();
+        const sNorm = geometry.boundingSphere?.radius > 1e-6
+          ? (1.35 / geometry.boundingSphere.radius) : 1.0;
+        geometry.scale(sNorm, sNorm, sNorm);
+        geometry.computeBoundingSphere();
+        if (geometry.attributes.normal) geometry.normalizeNormals();
+      }
       break;
       
     case 'figure8': {
       const hasCurve = Curves && typeof Curves['FigureEightPolynomialKnot'] === 'function';
       const rawCurve = hasCurve
         ? new Curves['FigureEightPolynomialKnot']()
-        : new TorusKnotCurve({ p: 3, q: 4, R: 1.0, r: 0.35 });
+        : new TorusKnotCurve({ p: 3, q: 4, R: 1.0, r: 0.45 });
       geometry = buildProcessedTube(rawCurve, { closed: true, targetOuterRadius: 1.35, sampleN: 300 });
       break;
     }
-      
+
     case 'torus_2_5':
-      geometry = buildProcessedTube(new TorusKnotCurve({ p: 2, q: 5, R: 1.0, r: 0.38 }), { closed: true, targetOuterRadius: 1.35, sampleN: 300 });
+      geometry = buildProcessedTube(new TorusKnotCurve({ p: 2, q: 5, R: 1.0, r: 0.50 }), { closed: true, targetOuterRadius: 1.35, sampleN: 300 });
       break;
-      
+
     case 'torus_2_7':
-      geometry = buildProcessedTube(new TorusKnotCurve({ p: 2, q: 7, R: 1.0, r: 0.35 }), { closed: true, targetOuterRadius: 1.35, sampleN: 300 });
+      geometry = buildProcessedTube(new TorusKnotCurve({ p: 2, q: 7, R: 1.0, r: 0.45 }), { closed: true, targetOuterRadius: 1.35, sampleN: 300 });
       break;
-      
+
     case 'torus_2_9':
-      geometry = buildProcessedTube(new TorusKnotCurve({ p: 2, q: 9, R: 1.0, r: 0.32 }), { closed: true, targetOuterRadius: 1.35, sampleN: 300 });
+      geometry = buildProcessedTube(new TorusKnotCurve({ p: 2, q: 9, R: 1.0, r: 0.42 }), { closed: true, targetOuterRadius: 1.35, sampleN: 300 });
       break;
-      
+
     case 'torus_3_4':
-      geometry = buildProcessedTube(new TorusKnotCurve({ p: 3, q: 4, R: 1.0, r: 0.35 }), { closed: true, targetOuterRadius: 1.35, sampleN: 300 });
+      geometry = buildProcessedTube(new TorusKnotCurve({ p: 3, q: 4, R: 1.0, r: 0.45 }), { closed: true, targetOuterRadius: 1.35, sampleN: 300 });
       break;
-      
+
     case 'torus_3_5':
-      geometry = buildProcessedTube(new TorusKnotCurve({ p: 3, q: 5, R: 1.0, r: 0.32 }), { closed: true, targetOuterRadius: 1.35, sampleN: 300 });
+      geometry = buildProcessedTube(new TorusKnotCurve({ p: 3, q: 5, R: 1.0, r: 0.40 }), { closed: true, targetOuterRadius: 1.35, sampleN: 300 });
       break;
       
     case 'hopf_link':
-      geometry = buildHopfLinkGeometry({ rng: localRng, quality, radius: tubeRadius });
+      geometry = buildHopfLinkGeometry({ rng: localRng, quality, radius: 0.12 });
       break;
-      
+
     case 'unlinked_rings':
-      geometry = buildUnlinkedRingsGeometry({ rng: localRng, quality, radius: tubeRadius });
+      geometry = buildUnlinkedRingsGeometry({ rng: localRng, quality, radius: 0.12 });
       break;
-      
+
     case 'chain':
-      geometry = buildChainGeometry({ rng: localRng, quality, radius: tubeRadius, numLinks: 4 });
+      geometry = buildChainGeometry({ rng: localRng, quality, radius: 0.10, numLinks: options.numLinks || 4 });
       break;
-      
+
     case 'borromean':
-      geometry = buildBorromeanRingsGeometry({ rng: localRng, quality, radius: tubeRadius });
+      geometry = buildBorromeanRingsGeometry({ rng: localRng, quality, radius: 0.08 });
       break;
       
     default:
@@ -987,6 +1189,88 @@ export function setupLighting(scene, options = {}) {
 }
 
 /**
+ * 检测 crossing 区域并加深"下方"绳段的顶点颜色，提供 over/under 深度线索。
+ * 在 TubeGeometry 上操作：按 tubular ring 分组，找到空间上接近但曲线上远离的 ring 对，
+ * 将 Z 值较低（"下方"）的 ring 顶点颜色乘以 darkenFactor。
+ *
+ * @param {THREE.BufferGeometry} geometry - TubeGeometry (需要已有 color attribute)
+ * @param {number} tubularSegments - 沿曲线的分段数
+ * @param {number} radialSegments - 管壁圆周分段数
+ * @param {number} tubeRadius - 管壁半径
+ */
+function applyCrossingDepthShading(geometry, tubularSegments, radialSegments, tubeRadius) {
+  const posAttr = geometry.attributes.position;
+  const colorAttr = geometry.attributes.color;
+  if (!posAttr || !colorAttr) return;
+
+  const radsPerRing = radialSegments + 1;
+  const numRings = tubularSegments + 1;
+
+  // 计算每个 ring 的中心点
+  const ringCenters = [];
+  for (let i = 0; i < numRings; i++) {
+    const cx = new THREE.Vector3(0, 0, 0);
+    let count = 0;
+    for (let j = 0; j < radsPerRing; j++) {
+      const idx = i * radsPerRing + j;
+      if (idx < posAttr.count) {
+        cx.x += posAttr.getX(idx);
+        cx.y += posAttr.getY(idx);
+        cx.z += posAttr.getZ(idx);
+        count++;
+      }
+    }
+    if (count > 0) cx.divideScalar(count);
+    ringCenters.push(cx);
+  }
+
+  // 找交叉区域：空间距离 < threshold 但曲线上距离 > minArcSep 的 ring 对
+  const crossingThreshold = tubeRadius * 5.0;
+  const minArcSep = Math.max(12, Math.floor(numRings * 0.08));
+  const darkenFactor = 0.55; // "下方"绳段变暗到原来的 55%
+  const fadeRings = 4; // 渐变范围
+
+  // 标记每个 ring 是否需要变暗（以及变暗程度）
+  const ringDarken = new Float32Array(numRings).fill(1.0); // 1.0 = no change
+
+  for (let i = 0; i < numRings; i++) {
+    for (let k = i + minArcSep; k < numRings; k++) {
+      const dist = ringCenters[i].distanceTo(ringCenters[k]);
+      if (dist < crossingThreshold) {
+        // Z 较低的是 "under" strand
+        const underIdx = ringCenters[i].z < ringCenters[k].z ? i : k;
+        // 对 under ring 及周围几个 ring 应用变暗
+        for (let d = -fadeRings; d <= fadeRings; d++) {
+          const ri = underIdx + d;
+          if (ri >= 0 && ri < numRings) {
+            const fade = 1.0 - (1.0 - darkenFactor) * Math.max(0, 1 - Math.abs(d) / fadeRings);
+            ringDarken[ri] = Math.min(ringDarken[ri], fade);
+          }
+        }
+      }
+    }
+  }
+
+  // 应用变暗到顶点颜色
+  for (let i = 0; i < numRings; i++) {
+    if (ringDarken[i] < 0.999) {
+      const factor = ringDarken[i];
+      for (let j = 0; j < radsPerRing; j++) {
+        const idx = i * radsPerRing + j;
+        if (idx < colorAttr.count) {
+          colorAttr.setXYZ(idx,
+            colorAttr.getX(idx) * factor,
+            colorAttr.getY(idx) * factor,
+            colorAttr.getZ(idx) * factor
+          );
+        }
+      }
+    }
+  }
+  colorAttr.needsUpdate = true;
+}
+
+/**
  * 为几何体添加顶点颜色（如果没有的话）
  * 这是 knot_gallery.html 渲染效果的关键
  */
@@ -1083,11 +1367,20 @@ export async function renderSingleImage(imageParams, options = {}) {
     deformStrength: imageParams.deformStrength || 0.3,
     slackness: imageParams.slackness || 0,
     anisotropicScale: imageParams.anisotropicScale || [1, 1, 1],
+    numLinks: imageParams.numLinks,
   });
   
   // 确保几何体有顶点颜色 - 这是 knot_gallery.html 渲染效果的关键
   ensureVertexColors(geometry, imageParams.color || '#72e6ff');
-  
+
+  // Crossing 深度着色：检测 over/under 区域，加深"下方"绳段
+  {
+    const { tubularSegments, radialSegments } = tubeQualityParams('high');
+    const cn = getCrossingNumber(imageParams.knotType) || 0;
+    const tubeRatio = cn <= 4 ? 0.07 : (cn <= 7 ? 0.055 : 0.045);
+    applyCrossingDepthShading(geometry, tubularSegments, radialSegments, tubeRatio);
+  }
+
   // Create high-quality material - 复刻 knot_gallery.html 的效果
   const material = createHighQualityMaterial(
     imageParams.color || '#72e6ff',
@@ -1099,16 +1392,16 @@ export async function renderSingleImage(imageParams, options = {}) {
   
   // Create mesh
   const mesh = new THREE.Mesh(geometry, material);
-  
-  // 居中并统一缩放到目标包围球（保持各向同性，禁止额外随机缩放）
+
+  // 居中并统一缩放：确保绳结在画面中足够大且不出框
   geometry.computeBoundingSphere();
-  const radius = geometry.boundingSphere?.radius || 1;
-  const targetRadius = 1.8;
-  const scale = targetRadius / radius;
-  mesh.scale.setScalar(scale); // 仅等比缩放
-  // 强制保持单位各向同性（禁止 anisotropicScale）
-  mesh.scale.set(1, 1, 1);
-  
+  const bsRadius = geometry.boundingSphere?.radius || 1;
+  const TARGET_VISUAL_RADIUS = 1.8; // 目标包围球半径
+  if (bsRadius > 1e-6) {
+    const uniformScale = TARGET_VISUAL_RADIUS / bsRadius;
+    mesh.scale.setScalar(uniformScale);
+  }
+
   scene.add(mesh);
   
   // Render
